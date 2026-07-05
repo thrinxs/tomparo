@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id             String             @id @default(cuid())
+  name           String?
+  email          String?            @unique
+  phone          String?            @unique
+  emailVerified  DateTime?
+  image          String?
+  role           String             @default("FREE")
+  password       String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  accounts       Account[]
+  sessions       Session[]
+  resumes        Resume[]
+  jobAnalyses    JobAnalysis[]
+  applications   Application[]
+  interviews     InterviewSession[]
+  subscription   Subscription?
+  usageTracking  UsageTracking[]
+  careerInsights CareerInsight[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Subscription {
+  id                 String    @id @default(cuid())
+  userId             String    @unique
+  paystackCustomerId String?   @unique
+  paystackPlanCode   String?
+  paystackSubCode    String?   @unique
+  status             String    @default("ACTIVE")
+  plan               String    @default("monthly")
+  amount             Int?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Resume {
+  id            String        @id @default(cuid())
+  userId        String
+  title         String
+  fileName      String?
+  fileUrl       String?
+  rawText       String?
+  parsedData    String?
+  atsScore      Int?
+  version       Int           @default(1)
+  isOptimized   Boolean       @default(false)
+  optimizedText String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applications  Application[]
+  jobAnalyses   JobAnalysis[]
+}
+
+model JobAnalysis {
+  id                 String        @id @default(cuid())
+  userId             String
+  resumeId           String?
+  jobTitle           String?
+  company            String?
+  jobDescription     String
+  parsedRequirements String?
+  requiredSkills     String?
+  matchScore         Int?
+  missingSkills      String?
+  recommendations    String?
+  createdAt          DateTime      @default(now())
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume             Resume?       @relation(fields: [resumeId], references: [id])
+  applications       Application[]
+}
+
+model Application {
+  id               String       @id @default(cuid())
+  userId           String
+  resumeId         String?
+  jobAnalysisId    String?
+  coverLetter      String?
+  emailDraft       String?
+  emailStyle       String?
+  emailSubject     String?
+  status           String       @default("draft")
+  coverLetterScore Int?
+  emailScore       Int?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume           Resume?      @relation(fields: [resumeId], references: [id])
+  jobAnalysis      JobAnalysis? @relation(fields: [jobAnalysisId], references: [id])
+}
+
+model InterviewSession {
+  id             String    @id @default(cuid())
+  userId         String
+  jobTitle       String?
+  difficulty     String    @default("standard")
+  questionType   String    @default("mixed")
+  questions      String?
+  answers        String?
+  feedback       String?
+  readinessScore Int?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UsageTracking {
+  id     String   @id @default(cuid())
+  userId String
+  action String
+  count  Int      @default(1)
+  date   DateTime @default(now())
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, action, date])
+}
+
+model CareerInsight {
+  id               String   @id @default(cuid())
+  userId           String
+  missingSkills    String?
+  recommendedCerts String?
+  experienceGaps   String?
+  careerLevel      String?
+  marketDemand     String?
+  nextLevelNeeds   String?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
