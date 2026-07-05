@@ -3,7 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -106,7 +108,7 @@ model JobAnalysis {
   jobDescription     String        @db.Text
   parsedRequirements String?       @db.Text
   requiredSkills     String?       @db.Text
-  matchScore          Int?
+  matchScore         Int?
   missingSkills      String?       @db.Text
   recommendations    String?       @db.Text
   createdAt          DateTime      @default(now())
