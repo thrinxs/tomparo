@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/activity-log";
 import {
   sendInterviewInvite,
   sendRejectionEmail,
@@ -194,6 +195,14 @@ export async function POST(req: NextRequest) {
 
     const successful = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
+
+    await logActivity({
+      recruiterId: profile.id,
+      type: "BULK_EMAIL_SENT",
+      title: "Bulk email sent",
+      description: `${successful} of ${results.length} emails delivered`,
+      meta: { type, total: results.length, successful, failed },
+    });
 
     return NextResponse.json({
       success: true,

@@ -30,6 +30,7 @@ model User {
   usageTracking  UsageTracking[]
   careerInsights CareerInsight[]
   chatConversations ChatConversation[]
+  teamMemberships RecruiterTeamMember[]
 }
 
 model Account {
@@ -201,8 +202,11 @@ model RecruiterProfile {
   userId          String    @unique
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   replyToEmail    String? 
-   companySlug     String?   @unique   
+  companySlug     String?   @unique   
   slugLocked      Boolean   @default(false) 
+  activityLogs  RecruiterActivityLog[]
+  teamMembers   RecruiterTeamMember[]
+  invites       RecruiterInvite[]
 
   // Company Info
   companyName     String
@@ -379,4 +383,82 @@ enum ApplicationStatus {
   SHORTLISTED
   REJECTED
   HIRED
+}
+
+// ── Phase 4: Activity Log ──────────────────────────────────────────────────────
+
+model RecruiterActivityLog {
+  id          String   @id @default(cuid())
+  recruiterId String
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  type        ActivityType
+  title       String
+  description String?
+  meta        String?  // JSON — extra data (candidateName, jobTitle, emailType, etc.)
+  createdAt   DateTime @default(now())
+
+  @@index([recruiterId])
+  @@index([createdAt])
+}
+
+// ── Phase 4: Team Members ──────────────────────────────────────────────────────
+
+model RecruiterTeamMember {
+  id          String     @id @default(cuid())
+  recruiterId String
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        TeamRole   @default(MEMBER)
+  joinedAt    DateTime   @default(now())
+
+  @@unique([recruiterId, userId])
+  @@index([recruiterId])
+}
+
+// ── Phase 4: Team Invites ──────────────────────────────────────────────────────
+
+model RecruiterInvite {
+  id          String       @id @default(cuid())
+  recruiterId String
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  email       String
+  role        TeamRole     @default(MEMBER)
+  token       String       @unique @default(cuid())
+  status      InviteStatus @default(PENDING)
+  expiresAt   DateTime
+  createdAt   DateTime     @default(now())
+  acceptedAt  DateTime?
+
+  @@index([recruiterId])
+  @@index([token])
+}
+
+enum ActivityType {
+  CV_UPLOADED
+  CV_BULK_UPLOADED
+  JOB_CREATED
+  JOB_UPDATED
+  JOB_CLOSED
+  APPLICATION_RECEIVED
+  CANDIDATE_STATUS_CHANGED
+  EMAIL_SENT
+  BULK_EMAIL_SENT
+  TEAM_MEMBER_INVITED
+  TEAM_MEMBER_JOINED
+  TEAM_MEMBER_REMOVED
+  SETTINGS_UPDATED
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
 }

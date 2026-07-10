@@ -74,6 +74,7 @@ tomparo/
 │ ├── (dashboard)/ # User dashboard (sidebar layout)
 │ │ ├── layout.tsx
 │ │ └── dashboard/
+│ │ ├── DashboardClient.tsx # Client component split
 │ │ ├── page.tsx # Dashboard home (WORKING)
 │ │ ├── resume/page.tsx # CV analysis (WORKING)
 │ │ ├── job/page.tsx # Job matching (WORKING)
@@ -97,8 +98,8 @@ tomparo/
 │ │ │ ├── new/page.tsx # Create job with AI write/review (WORKING)
 │ │ │ └── [id]/edit/page.tsx # Edit job (WORKING)
 │ │ ├── candidates/
-│ │ │ ├── page.tsx # Candidate list (WORKING)
-│ │ │ └── [id]/page.tsx # Candidate detail + email panel (WORKING)
+│ │ │ ├── page.tsx # Candidate list + bulk email UI (WORKING)
+│ │ │ └── [id]/page.tsx # Candidate detail + email panel + open tracking + history (WORKING)
 │ │ ├── pipeline/page.tsx # Kanban pipeline (WORKING)
 │ │ ├── emails/page.tsx # AI emails (PLANNED - Growth+)
 │ │ ├── interviews/page.tsx # AI interviews (PLANNED - Business+)
@@ -142,6 +143,7 @@ tomparo/
 │ ├── user/profile/route.ts
 │ ├── user/usage/route.ts
 │ ├── user/history/route.ts
+│ ├── track/email-open/[emailId]/route.ts # Email open tracking pixel (WORKING)
 │ ├── jobs/ # PUBLIC — no auth required
 │ │ └── [companySlug]/
 │ │ ├── route.ts # GET company + active jobs
@@ -151,6 +153,7 @@ tomparo/
 │ │ └── preview/route.ts # POST CV → instant AI match score
 │ └── recruiter/
 │ ├── cv/analyze/route.ts
+│ ├── cv/analyze/jobs/[id]/route.ts
 │ ├── bulk/route.ts
 │ ├── bulk/analyze/route.ts
 │ ├── jobs/route.ts # WORKING — auto-generates jobSlug on create
@@ -163,9 +166,10 @@ tomparo/
 │ ├── talent-pool/route.ts # GET all applications
 │ ├── talent-pool/[id]/route.ts # GET single + PATCH status + DELETE
 │ ├── talent-pool/[id]/cv/route.ts # GET signed URL for CV preview/download
-│ ├── emails/send/route.ts # POST send email via Resend
+│ ├── emails/send/route.ts # POST send email via Resend + tracking pixel
 │ ├── emails/generate/route.ts # POST AI generate email content
 │ ├── emails/history/route.ts # GET email history
+│ ├── emails/bulk/route.ts # POST bulk email to multiple candidates (Business+)
 │ ├── settings/route.ts # GET + PATCH recruiter profile
 │ └── slug/check/route.ts # GET check company username availability
 ├── components/
@@ -220,7 +224,7 @@ tomparo/
 │ ├── utils.ts
 │ ├── usage-limiter.ts
 │ ├── paystack.ts
-│ ├── email.ts # Resend client — sends from hire@tomparo.com
+│ ├── email.ts # Resend client — sends from hire@tomparo.com — tracking pixel support
 │ ├── supabase-storage.ts # Supabase Storage — uploadCV, getSignedUrl, deleteCV
 │ └── ai/
 │ ├── resume-analyzer.ts
@@ -294,7 +298,7 @@ tomparo/
 - **JobPosting** — recruiterId, jobSlug, title, description, requirements, location, type (enum), salaryMin, salaryMax, salaryCurrency, deadline, status (enum)
 - **RecruiterCandidate** — recruiterId, jobId, fileName, rawText, candidateName, candidateEmail, candidatePhone, aiAnalysis (JSON), atsScore, status (enum), notes
 - **RecruiterApplication** — recruiterId, jobId, candidateName, candidateEmail, candidatePhone, coverLetter, cvText, cvFileName, cvFileUrl (Supabase Storage path), aiAnalysis (JSON), atsScore, aiSummary, source (form/email), status (enum)
-- **RecruiterEmail** — recruiterId, candidateId, type, to, subject, message, replyTo, ccSelf, hasAttachment, attachmentName, status, resendId, createdAt
+- **RecruiterEmail** — recruiterId, candidateId, type, to, subject, message, replyTo, ccSelf, hasAttachment, attachmentName, status, resendId, openedAt, openCount, createdAt
 
 ### Enums
 
@@ -326,6 +330,7 @@ tomparo/
 
 - `/` `/pricing` `/recruiter-pricing` `/privacy` `/terms` `/contact` `/about` `/how-it-works` `/faq` `/success-stories` → Public
 - `/jobs/*` → Public (candidate-facing apply pages)
+- `/api/track/*` → Public (email open tracking pixel)
 - `/signin` `/signup` `/forgot-password` → Auth (redirect if logged in, role-aware)
 - `/dashboard/*` → Must be logged in. Recruiters redirected to `/recruiter`
 - `/dashboard/interview` `/career` `/chat` `/messages` → LockedFeature for non-premium
@@ -481,6 +486,28 @@ Stage 1: Job Creation → Stage 2: CV Screening → Stage 3: Interview Invite �
 - AI writes personalized content via `lib/ai/recruiter-email-generator.ts`
 - Set in Settings: `replyToEmail` field on RecruiterProfile
 - Env var: `RESEND_API_KEY`
+
+### Email Open Tracking (Business+)
+
+- 1×1 transparent PNG tracking pixel embedded in every recruiter email
+- Pixel URL: `/api/track/email-open/[emailId]`
+- On candidate open: `openedAt`, `openCount` (increment), `status = "opened"` updated in DB
+- Silently fails — never breaks email delivery
+- `/api/track/*` is a public route in proxy.ts (no auth required)
+- Email history on candidate detail page shows: "✅ Opened X times · Last opened [date]"
+- Status badge: **Opened** (emerald) / **Sent** (blue) / **Failed** (red)
+
+### Bulk Email Sending (Business+)
+
+- API: `POST /api/recruiter/emails/bulk`
+- Plan-gated: RECRUITER_BUSINESS, RECRUITER_ENTERPRISE, RECRUITER_SCALE, RECRUITER_CUSTOM, ADMIN
+- Maximum 50 candidates per bulk send
+- AI personalizes each email individually if no custom message provided
+- 200ms delay between sends to avoid Resend rate limiting
+- Each email gets its own tracking pixel
+- UI on candidates page: select mode → checkboxes → compose panel → email type + job title + AI write → send
+- Results displayed inline: ✅ sent / ❌ failed per candidate
+- Returns summary: { total, successful, failed }
 
 ### Yearly Pricing Toggle
 
@@ -712,23 +739,18 @@ CV upload + AI analysis, Job matching, Cover letter (DOCX), Application email (3
 - AI ranking (automatic by ATS score + hire recommendation)
 - Pipeline Kanban (drag & drop, visual column highlight on hover)
 
-**Recruiter Platform — Phase 3 (Partial) 🔄:**
+**Recruiter Platform — Phase 3 ✅ COMPLETE:**
 
-- ✅ AI emails (interview invite, rejection, offer, followup, waitlist)
-- ✅ Email settings (reply-to, CC self, attachments)
-- ✅ Email history per candidate
-- ✅ TalentPool — applications inbox with AI auto-analysis
-- ✅ Public apply form with AI match preview
-- ✅ CV file storage (Supabase Storage) + preview + download
-- ⏳ Email open tracking
-- ⏳ Bulk email sending
+- AI emails (interview invite, rejection, offer, followup, waitlist)
+- Email settings (reply-to, CC self, attachments)
+- Email history per candidate
+- TalentPool — applications inbox with AI auto-analysis
+- Public apply form with AI match preview
+- CV file storage (Supabase Storage) + preview + download
+- Email open tracking — 1×1 pixel, openedAt + openCount, "✅ Opened" badge in history
+- Bulk email sending — select candidates, compose, AI personalize, send to up to 50, results display
 
 ### ⏳ Recruiter Phases Remaining
-
-**Phase 3 remaining:**
-
-- Email open tracking (Business+)
-- Bulk email sending (Business+)
 
 **Phase 4: Analytics & Team**
 
@@ -761,11 +783,11 @@ CV upload + AI analysis, Job matching, Cover letter (DOCX), Application email (3
 
 ## Migration History
 
-### Phase 3 Communication + Apply Form (Latest)
+### Phase 3 Communication + Email Tracking + Bulk Email (Latest)
 
-- Added Resend email service (lib/email.ts)
+- Added Resend email service (lib/email.ts) with tracking pixel support
 - Added Supabase Storage for CV files (lib/supabase-storage.ts)
-- Added RecruiterEmail table for email history
+- Added RecruiterEmail table for email history (with openedAt, openCount fields)
 - Added RecruiterApplication table for TalentPool
 - Added companySlug + slugLocked to RecruiterProfile
 - Added jobSlug to JobPosting
@@ -773,6 +795,11 @@ CV upload + AI analysis, Job matching, Cover letter (DOCX), Application email (3
 - Built TalentPool page with CV preview/download
 - Built public apply form with AI match score preview
 - Built company jobs listing page
+- Built email open tracking: 1×1 pixel at /api/track/email-open/[emailId]
+- Built bulk email sending: /api/recruiter/emails/bulk (Business+ plan-gated)
+- Updated candidates page with bulk email select UI + compose panel
+- Updated candidate detail page with open tracking display in email history
+- Added /api/track/\* as public route in proxy.ts
 - Added CookieBanner component + Toaster to root layout
 - Added password visibility toggle + keep me signed in to auth pages
 - Added yearly pricing toggle (15% discount) to recruiter pricing page
@@ -846,3 +873,9 @@ TomParo is building Nigeria's first AI-native job marketplace — connecting job
 - **Jobs pages are public:** /jobs/\* must return NextResponse.next() in proxy.ts before dashboard check
 - **Duplicate applications:** Check by recruiterId + jobId + candidateEmail before creating
 - **toSafeString helper:** Convert AI field output — AI may return array instead of string
+- **Email open tracking:** 1×1 pixel at /api/track/email-open/[emailId] — public route, no auth
+- **Email tracking pixel:** Always created BEFORE sending email — emailRecord.id needed for URL
+- **Bulk email max:** 50 candidates per request — 200ms delay between sends
+- **Bulk email plan gate:** Business+ only — returns upgradeRequired: true for lower plans
+- **Email status states:** "sent" → "opened" (on pixel fire) or "failed"
+- **openCount increments:** Each pixel load = +1 — multiple opens tracked

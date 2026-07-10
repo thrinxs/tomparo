@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/activity-log";
 
 // Add this helper function at the top of the file after imports:
 function generateJobSlug(title: string): string {
@@ -103,6 +104,14 @@ export async function POST(req: NextRequest) {
         status: status || "ACTIVE",
       },
           });
+
+    await logActivity({
+      recruiterId: profile.id,
+      type: "JOB_CREATED",
+      title: "New job posted",
+      description: job.title,
+      meta: { jobId: job.id, jobTitle: job.title, status: job.status },
+    });
 
     return NextResponse.json({ success: true, job }, { status: 201 });
   } catch (error) {

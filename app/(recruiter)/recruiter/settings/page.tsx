@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Building2, Mail, Globe, Users, Briefcase,
-  Save, Loader2, CheckCircle, Info, Lock,
+  Save, Loader2, CheckCircle, Info, Lock, UserPlus,
   Copy, ExternalLink,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -15,6 +15,12 @@ const industries = [
   "NGO/Non-profit", "Government", "Other",
 ];
 
+const seatLimits: Record<string, number> = {
+  FREE: 1, RECRUITER_STARTER: 1, RECRUITER_GROWTH: 2,
+  RECRUITER_BUSINESS: 5, RECRUITER_ENTERPRISE: 10,
+  RECRUITER_SCALE: 25, RECRUITER_CUSTOM: 999, ADMIN: 999,
+};
+
 type UsernameStatus = "idle" | "checking" | "available" | "taken" | "invalid" | "reserved";
 
 export default function RecruiterSettingsPage() {
@@ -25,7 +31,7 @@ export default function RecruiterSettingsPage() {
   const [usernameSaved, setUsernameSaved] = useState(false);
   const [profileId, setProfileId] = useState("");
 
-  // Company fields
+  // ── Company fields ──
   const [companyName, setCompanyName] = useState("");
   const [companySize, setCompanySize] = useState("");
   const [industry, setIndustry] = useState("");
@@ -33,7 +39,7 @@ export default function RecruiterSettingsPage() {
   const [description, setDescription] = useState("");
   const [replyToEmail, setReplyToEmail] = useState("");
 
-  // Username fields
+  // ── Username fields ──
   const [username, setUsername] = useState("");
   const [originalUsername, setOriginalUsername] = useState("");
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>("idle");
@@ -41,9 +47,18 @@ export default function RecruiterSettingsPage() {
   const [slugLocked, setSlugLocked] = useState(false);
   const [checkTimer, setCheckTimer] = useState<NodeJS.Timeout | null>(null);
 
+  // ── Team fields ──
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("MEMBER");
+  const [inviting, setInviting] = useState(false);
+  const [seatLimit, setSeatLimit] = useState(1);
+
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchAll = async () => {
       try {
+        // Fetch company profile
         const res = await fetch("/api/recruiter/settings");
         const data = await res.json();
         if (data.profile) {
@@ -58,13 +73,26 @@ export default function RecruiterSettingsPage() {
           setOriginalUsername(data.profile.companySlug || "");
           setSlugLocked(data.profile.slugLocked || false);
         }
+
+        // Fetch team
+        const teamRes = await fetch("/api/recruiter/team");
+        const teamData = await teamRes.json();
+        if (teamData.members) setTeamMembers(teamData.members);
+        if (teamData.invites) setPendingInvites(teamData.invites);
+
+        // Fetch seat limit from user profile
+        const profileRes = await fetch("/api/user/profile");
+        const profileData = await profileRes.json();
+        if (profileData.user?.role) {
+          setSeatLimit(seatLimits[profileData.user.role] || 1);
+        }
       } catch {
         toast.error("Failed to load settings");
       } finally {
         setLoading(false);
       }
     };
-    fetchProfile();
+    fetchAll();
   }, []);
 
   // ── Username availability check ──────────────────────────────────────────────
@@ -87,10 +115,8 @@ export default function RecruiterSettingsPage() {
     try {
       const params = new URLSearchParams({ slug: value });
       if (profileId) params.set("excludeId", profileId);
-
       const res = await fetch(`/api/recruiter/slug/check?${params}`);
       const data = await res.json();
-
       if (data.error && !data.available) {
         setUsernameStatus("reserved");
         setUsernameMessage(data.error);
@@ -115,33 +141,22 @@ export default function RecruiterSettingsPage() {
     setCheckTimer(timer);
   };
 
-  // ── Confirm username (saves only username) ────────────────────────────────────
+  // ── Confirm username ──────────────────────────────────────────────────────────
 
   const handleConfirmUsername = async () => {
     if (usernameStatus !== "available") return;
-
     setSavingUsername(true);
     try {
       const res = await fetch("/api/recruiter/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyName,
-          companySlug: username,
-        }),
+        body: JSON.stringify({ companyName, companySlug: username }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
-        if (data.slugLocked) {
-          toast.error("Username is locked. Contact support to change it.");
-        } else {
-          toast.error(data.error || "Failed to save username");
-        }
+        toast.error(data.slugLocked ? "Username is locked. Contact support." : data.error || "Failed to save username");
         return;
       }
-
       setOriginalUsername(username);
       setUsernameStatus("idle");
       setUsernameMessage("");
@@ -155,37 +170,26 @@ export default function RecruiterSettingsPage() {
     }
   };
 
-  // ── Save all other settings ───────────────────────────────────────────────────
+  // ── Save all settings ─────────────────────────────────────────────────────────
 
   const handleSave = async () => {
     if (!companyName.trim()) {
       toast.error("Company name is required");
       return;
     }
-
     setSaving(true);
     try {
       const res = await fetch("/api/recruiter/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyName,
-          companySize,
-          industry,
-          website,
-          description,
-          replyToEmail,
-        }),
+        body: JSON.stringify({ companyName, companySize, industry, website, description, replyToEmail }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
         toast.error(data.error || "Failed to save settings");
         return;
       }
-
-      toast.success("Settings saved successfully!");
+      toast.success("Settings saved!");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
@@ -195,9 +199,45 @@ export default function RecruiterSettingsPage() {
     }
   };
 
+  // ── Team handlers ─────────────────────────────────────────────────────────────
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    try {
+      const res = await fetch("/api/recruiter/team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: inviteEmail, memberRole: inviteRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to send invite");
+        return;
+      }
+      setPendingInvites((prev) => [...prev, data.invite]);
+      setInviteEmail("");
+      toast.success("Invite sent!");
+    } catch {
+      toast.error("Failed to send invite");
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    try {
+      const res = await fetch(`/api/recruiter/team/${memberId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setTeamMembers((prev) => prev.filter((m) => m.id !== memberId));
+      toast.success("Team member removed");
+    } catch {
+      toast.error("Failed to remove member");
+    }
+  };
+
   const copyApplyEmail = () => {
-    const email = `${originalUsername}-apply@tomparo.com`;
-    navigator.clipboard.writeText(email);
+    navigator.clipboard.writeText(`${originalUsername}-apply@tomparo.com`);
     toast.success("Copied to clipboard!");
   };
 
@@ -328,17 +368,12 @@ export default function RecruiterSettingsPage() {
           )}
         </div>
 
-        {/* Current apply email display */}
         {originalUsername && (
           <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs text-slate-500 mb-1">Your current apply email address</p>
-              <p className="text-white font-semibold text-sm">
-                {originalUsername}-apply@tomparo.com
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Share this with candidates so they can apply directly to you
-              </p>
+              <p className="text-white font-semibold text-sm">{originalUsername}-apply@tomparo.com</p>
+              <p className="text-xs text-slate-500 mt-1">Share this with candidates so they can apply directly to you</p>
             </div>
             <div className="flex gap-2 shrink-0">
               <button
@@ -359,24 +394,17 @@ export default function RecruiterSettingsPage() {
           </div>
         )}
 
-        {/* Locked state */}
         {slugLocked ? (
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-5">
             <div className="flex items-start gap-3">
               <Lock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold text-white">Company username is locked</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  To change your company username, contact TomParo support with:
-                </p>
+                <p className="text-xs text-slate-400 mt-1">To change your company username, contact TomParo support with:</p>
                 <ul className="mt-2 space-y-1">
-                  {[
-                    "Government-issued document proving company name change",
-                    "Valid management staff ID card",
-                  ].map((item) => (
+                  {["Government-issued document proving company name change", "Valid management staff ID card"].map((item) => (
                     <li key={item} className="flex items-start gap-2 text-xs text-slate-300">
-                      <span className="text-amber-400 shrink-0">•</span>
-                      {item}
+                      <span className="text-amber-400 shrink-0">•</span>{item}
                     </li>
                   ))}
                 </ul>
@@ -384,19 +412,14 @@ export default function RecruiterSettingsPage() {
                   href="mailto:support@tomparo.com?subject=Company Username Change Request"
                   className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/30 transition"
                 >
-                  <Mail className="w-3.5 h-3.5" />
-                  Contact Support
+                  <Mail className="w-3.5 h-3.5" />Contact Support
                 </a>
               </div>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            <label className="block text-xs font-medium text-slate-400">
-              Choose your company username
-            </label>
-
-            {/* Input + suffix */}
+            <label className="block text-xs font-medium text-slate-400">Choose your company username</label>
             <div className="flex items-center">
               <input
                 type="text"
@@ -411,28 +434,22 @@ export default function RecruiterSettingsPage() {
               </div>
             </div>
 
-            {/* Status message */}
             {usernameStatus !== "idle" && (
               <div className={`rounded-xl border px-4 py-3 ${
-                usernameStatus === "available"
-                  ? "border-emerald-500/20 bg-emerald-500/5"
-                  : usernameStatus === "taken" || usernameStatus === "invalid" || usernameStatus === "reserved"
-                  ? "border-red-500/20 bg-red-500/5"
-                  : "border-white/5 bg-white/[0.02]"
+                usernameStatus === "available" ? "border-emerald-500/20 bg-emerald-500/5"
+                : usernameStatus === "taken" || usernameStatus === "invalid" || usernameStatus === "reserved" ? "border-red-500/20 bg-red-500/5"
+                : "border-white/5 bg-white/[0.02]"
               }`}>
                 <p className={`text-xs flex items-center gap-2 ${statusConfig[usernameStatus].color}`}>
                   {usernameStatus === "checking" ? (
-                    <><Loader2 className="w-3 h-3 animate-spin" />Checking if username is available...</>
+                    <><Loader2 className="w-3 h-3 animate-spin" />Checking availability...</>
                   ) : usernameStatus === "available" ? (
                     <><CheckCircle className="w-3 h-3" />{usernameMessage}</>
-                  ) : (
-                    usernameMessage
-                  )}
+                  ) : usernameMessage}
                 </p>
               </div>
             )}
 
-            {/* Confirm Username Button — only shows when available */}
             {usernameStatus === "available" && (
               <button
                 onClick={handleConfirmUsername}
@@ -449,22 +466,16 @@ export default function RecruiterSettingsPage() {
               </button>
             )}
 
-            {/* Confirmed badge */}
             {usernameStatus === "idle" && originalUsername && originalUsername === username && (
               <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
                 <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                 <div>
-                  <p className="text-xs font-semibold text-emerald-400">
-                    Username confirmed: {originalUsername}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Apply email: {originalUsername}-apply@tomparo.com
-                  </p>
+                  <p className="text-xs font-semibold text-emerald-400">Username confirmed: {originalUsername}</p>
+                  <p className="text-xs text-slate-500">Apply email: {originalUsername}-apply@tomparo.com</p>
                 </div>
               </div>
             )}
 
-            {/* Info box */}
             <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 flex items-start gap-3">
               <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-400 space-y-1">
@@ -486,25 +497,20 @@ export default function RecruiterSettingsPage() {
 
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-2">
           <p className="text-xs font-semibold text-white flex items-center gap-2">
-            <Info className="w-3.5 h-3.5 text-blue-400" />
-            How email sending works
+            <Info className="w-3.5 h-3.5 text-blue-400" />How email sending works
           </p>
           <div className="space-y-1.5 text-xs text-slate-400">
             <div className="flex items-start gap-2">
               <span className="text-blue-400 shrink-0">→</span>
-              When you send an email to a candidate, it is sent from{" "}
-              <span className="text-white font-medium">hire@tomparo.com</span>{" "}
-              with your company name displayed
+              Emails are sent from <span className="text-white font-medium">hire@tomparo.com</span> with your company name displayed
             </div>
             <div className="flex items-start gap-2">
               <span className="text-blue-400 shrink-0">→</span>
-              When the candidate clicks{" "}
-              <span className="text-white font-medium">Reply</span>,
-              their reply goes directly to your personal email below — not to TomParo
+              When the candidate clicks <span className="text-white font-medium">Reply</span>, it goes to your personal email below
             </div>
             <div className="flex items-start gap-2">
               <span className="text-blue-400 shrink-0">→</span>
-              You can also choose to receive a copy of every email you send to candidates
+              You can choose to receive a CC copy of every email you send
             </div>
           </div>
         </div>
@@ -542,14 +548,111 @@ export default function RecruiterSettingsPage() {
         )}
       </div>
 
+      {/* ── Team Management ── */}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-white flex items-center gap-2">
+              <Users className="w-4 h-4 text-purple-400" />
+              Team Members
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">Invite colleagues to manage recruitment together</p>
+          </div>
+          <span className="text-xs text-slate-500 border border-white/10 px-3 py-1 rounded-full">
+            {teamMembers.length} / {seatLimit} seat{seatLimit !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        {teamMembers.length > 0 && (
+          <div className="space-y-2">
+            {teamMembers.map((member: any) => (
+              <div key={member.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-bold text-purple-400">
+                    {(member.user.name || member.user.email || "?")[0].toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{member.user.name || member.user.email}</p>
+                  <p className="text-xs text-slate-500">{member.user.email} · {member.role.toLowerCase()}</p>
+                </div>
+                <button
+                  onClick={() => handleRemoveMember(member.id)}
+                  className="text-xs text-red-400 hover:text-red-300 transition px-2 py-1 rounded-lg hover:bg-red-500/10"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {pendingInvites.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Pending Invites</p>
+            {pendingInvites.map((invite: any) => (
+              <div key={invite.id} className="flex items-center gap-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-bold text-amber-400">?</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{invite.email}</p>
+                  <p className="text-xs text-amber-400">
+                    Invite pending · expires {new Date(invite.expiresAt).toLocaleDateString("en-NG")}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {teamMembers.length + pendingInvites.length < seatLimit ? (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Invite Team Member</p>
+            <div className="flex gap-3">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="colleague@company.com"
+                className="flex-1 rounded-xl border border-white/10 bg-slate-900/50 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-purple-500/50 transition"
+              />
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-900/50 px-3 py-2.5 text-sm text-white outline-none focus:border-purple-500/50 transition"
+              >
+                <option value="MEMBER" className="bg-slate-900">Member</option>
+                <option value="ADMIN" className="bg-slate-900">Admin</option>
+              </select>
+              <button
+                onClick={handleInvite}
+                disabled={inviting || !inviteEmail.trim()}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-500 transition disabled:opacity-50"
+              >
+                {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                Invite
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">They will receive an email with a link to join your team.</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-center">
+            <p className="text-sm text-amber-400 font-medium">All seats filled</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Your plan includes {seatLimit} seat{seatLimit !== 1 ? "s" : ""}.{" "}
+              <a href="/recruiter-pricing" className="text-purple-400 hover:text-purple-300 underline">Upgrade</a> for more.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* ── Save Settings ── */}
       <button
         onClick={handleSave}
         disabled={saving}
         className={`w-full inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl text-white font-semibold transition disabled:opacity-50 ${
-          saved
-            ? "bg-emerald-600 hover:bg-emerald-500"
-            : "bg-purple-600 hover:bg-purple-500"
+          saved ? "bg-emerald-600 hover:bg-emerald-500" : "bg-purple-600 hover:bg-purple-500"
         }`}
       >
         {saving ? (

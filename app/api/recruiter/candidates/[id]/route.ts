@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/activity-log";
 
 export async function GET(
   req: NextRequest,
@@ -57,6 +58,16 @@ export async function PATCH(
         notes: body.notes ?? existing.notes,
       },
     });
+
+    if (status) {
+      await logActivity({
+        recruiterId: profile.id,
+        type: "CANDIDATE_STATUS_CHANGED",
+        title: "Candidate status updated",
+        description: `${existing.candidateName || "Candidate"} → ${status}`,
+        meta: { candidateName: existing.candidateName, status },
+      });
+    }
 
     return NextResponse.json({ success: true, candidate });
   } catch (error) {

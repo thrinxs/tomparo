@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/activity-log";
 import {
   sendInterviewInvite,
   sendRejectionEmail,
@@ -137,6 +138,14 @@ export async function POST(req: NextRequest) {
         resendId: result?.data?.id || null,
         status: result?.error ? "failed" : "sent",
       },
+    });
+
+    await logActivity({
+      recruiterId: profile.id,
+      type: "EMAIL_SENT",
+      title: "Email sent to candidate",
+      description: `${type} → ${to}`,
+      meta: { type, to, candidateName, jobTitle, subject },
     });
 
     return NextResponse.json({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/activity-log";
 
 // ── Helper: extract PDF text ──────────────────────────────────────────────────
 async function extractPdfText(buffer: Buffer): Promise<string> {
