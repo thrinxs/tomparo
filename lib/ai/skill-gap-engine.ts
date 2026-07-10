@@ -147,5 +147,5 @@ STRICT RULES:
 - Keep all strings SHORT (under 100 chars)
 - Return ONLY valid JSON, no markdown, no explanations`;
 
-  return generateJSONWithGemini<SkillGapResult>(prompt);
+return generateJSONWithGemini<SkillGapResult>(prompt, "skill-gap");
 }

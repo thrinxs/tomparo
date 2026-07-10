@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { matchResumeToJob } from "@/lib/ai/job-analyzer";
 import { checkUsageLimit, trackUsage, UserRole } from "@/lib/usage-limiter";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,7 +11,6 @@ export async function POST(req: NextRequest) {
     const userId = (session?.user as any)?.id;
     const role = ((session?.user as any)?.role || "FREE") as UserRole;
 
-    // Check usage limits
     if (userId) {
       const { allowed, usage } = await checkUsageLimit(
         userId,
@@ -39,23 +39,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const cleanedResume = resumeText
-      .replace(/\r\n/g, "\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .replace(/[ \t]+/g, " ")
-      .trim();
-
-    const cleanedJob = jobDescription
-      .replace(/\r\n/g, "\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .replace(/[ \t]+/g, " ")
-      .trim();
+    const cleanedResume = resumeText.trim();
+    const cleanedJob = jobDescription.trim();
 
     const matchResult = await matchResumeToJob(cleanedResume, cleanedJob);
 
-    // Track usage
+    // Save to database
     if (userId) {
-      await trackUsage(userId, "jobMatch");
+      try {
+        await prisma.jobAnalysis.create({
+          data: {
+            userId,
+            jobTitle: matchResult.jobDetails?.title || "Untitled Job",
+            company: matchResult.jobDetails?.company || null,
+            jobDescription: cleanedJob.slice(0, 20000),
+            matchScore: matchResult.matchScore,
+            requiredSkills: JSON.stringify(matchResult.matchedSkills || []),
+            missingSkills: JSON.stringify(matchResult.missingSkills || []),
+            recommendations: JSON.stringify(matchResult.applicationAdvice || {}),
+            parsedRequirements: JSON.stringify(matchResult),
+          },
+        });
+        await trackUsage(userId, "jobMatch");
+      } catch (dbError) {
+        console.error("Failed to save job match:", dbError);
+      }
     }
 
     return NextResponse.json({

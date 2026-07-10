@@ -2,16 +2,15 @@
 
 import Logo from "@/components/Logo";
 import Link from "next/link";
-import Image from "next/image";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Building2 } from "lucide-react";
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
-  // Hide navbar on auth pages and dashboard
+  // Hide navbar on auth pages and dashboard/admin/staff/support
   const hideNavbar =
     pathname?.startsWith("/signin") ||
     pathname?.startsWith("/signup") ||
@@ -19,15 +18,15 @@ export default function Navbar() {
     pathname?.startsWith("/dashboard") ||
     pathname?.startsWith("/admin") ||
     pathname?.startsWith("/staff") ||
-    pathname?.startsWith("/support");
+    pathname?.startsWith("/support") ||
+    pathname?.startsWith("/recruiter/"); // Hide on recruiter dashboard (not recruiter-pricing)
 
   if (hideNavbar) return null;
-
-  // ... rest of the code stays the same
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-2xl">
       <div className="mx-auto flex h-24 max-w-6xl items-center justify-between px-6">
+
         {/* Logo */}
         <Logo size="xl" />
 
@@ -50,6 +49,17 @@ export default function Navbar() {
             className="text-sm text-slate-400 transition hover:text-white"
           >
             Pricing
+          </Link>
+          <Link
+            href="/recruiter-pricing"
+            className={`flex items-center gap-1.5 text-sm transition ${
+              pathname === "/recruiter-pricing"
+                ? "text-purple-400"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Building2 className="h-3.5 w-3.5" />
+            For Recruiters
           </Link>
         </nav>
 
@@ -108,6 +118,15 @@ export default function Navbar() {
             >
               Pricing
             </Link>
+            <Link
+              href="/recruiter-pricing"
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white"
+            >
+              <Building2 className="h-4 w-4 text-purple-400" />
+              For Recruiters
+            </Link>
+
             <div className="border-t border-white/5 pt-3">
               <Link
                 href="/signin"

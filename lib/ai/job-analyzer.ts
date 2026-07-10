@@ -149,5 +149,5 @@ RULES:
 - Consider both hard and soft skills
 - Return ONLY valid JSON`;
 
-  return generateJSONWithGemini<JobMatchResult>(prompt);
+return generateJSONWithGemini<JobMatchResult>(prompt, "job-match");
 }

@@ -119,5 +119,5 @@ RULES:
 - Quick wins are things they can fix in under 15 minutes
 - Return ONLY valid JSON, no markdown, no explanations`;
 
-  return generateJSONWithGemini<ResumeAnalysisResult>(prompt);
+return generateJSONWithGemini<ResumeAnalysisResult>(prompt, "cv-analysis");
 }

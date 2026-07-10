@@ -55,7 +55,7 @@ RULES:
 - Use \\n for line breaks in the coverLetter field
 - Return ONLY the JSON object, nothing else`;
 
-  return generateJSONWithGemini<CoverLetterResult>(prompt);
+return generateJSONWithGemini<CoverLetterResult>(prompt, "cover-letter");
 }
 
 export async function generateApplicationEmail(
@@ -100,5 +100,5 @@ RULES:
 - Sign with candidate's name from resume
 - Return ONLY the JSON object, nothing else`;
 
-  return generateJSONWithGemini<EmailResult>(prompt);
+return generateJSONWithGemini<EmailResult>(prompt, "email");
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -16,11 +16,8 @@ import {
   Crown,
 } from "lucide-react";
 
-export default function DashboardHome() {
-  const { data: session } = useSession();
-  const user = session?.user as any;
-  const isPremium = user?.isPremium || false;
-
+// Separate component that uses useSearchParams
+function PaymentHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [verifyingPayment, setVerifyingPayment] = useState(false);
@@ -54,6 +51,20 @@ export default function DashboardHome() {
         });
     }
   }, [searchParams, router]);
+
+  if (!verifyingPayment) return null;
+
+  return (
+    <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-center">
+      <p className="text-sm text-blue-400">🔄 Verifying your payment...</p>
+    </div>
+  );
+}
+
+export default function DashboardHome() {
+  const { data: session } = useSession();
+  const user = session?.user as any;
+  const isPremium = user?.isPremium || false;
 
   const features = [
     {
@@ -90,13 +101,10 @@ export default function DashboardHome() {
     <div className="mx-auto max-w-6xl space-y-8">
       <Toaster position="top-right" />
 
-      {verifyingPayment && (
-        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-center">
-          <p className="text-sm text-blue-400">
-            🔄 Verifying your payment...
-          </p>
-        </div>
-      )}
+      {/* Payment Handler wrapped in Suspense */}
+      <Suspense fallback={null}>
+        <PaymentHandler />
+      </Suspense>
 
       {/* Welcome */}
       <div>
@@ -113,9 +121,7 @@ export default function DashboardHome() {
 
       {/* Quick Actions */}
       <div>
-        <h2 className="mb-4 text-lg font-semibold text-white">
-          Quick Actions
-        </h2>
+        <h2 className="mb-4 text-lg font-semibold text-white">Quick Actions</h2>
         <div className="grid gap-4 md:grid-cols-2">
           {features.map((feature) => {
             const Icon = feature.icon;

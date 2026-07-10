@@ -5,6 +5,15 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "./prisma";
 import bcrypt from "bcryptjs";
 
+const recruiterRoles = [
+  "RECRUITER_STARTER",
+  "RECRUITER_GROWTH",
+  "RECRUITER_BUSINESS",
+  "RECRUITER_ENTERPRISE",
+  "RECRUITER_SCALE",
+  "RECRUITER_CUSTOM",
+];
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
   providers: [
@@ -54,28 +63,59 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
+      // ── Always fetch fresh data from DB on every JWT refresh ──
+      // This ensures role + isRecruiter is always up to date
+      const emailToLookup = (user?.email || token?.email) as string | undefined;
+
+      if (emailToLookup) {
         const dbUser = await prisma.user.findUnique({
-          where: { email: user.email! },
-          include: { subscription: true },
+          where: { email: emailToLookup },
+          include: {
+            subscription: true,
+            recruiterProfile: true,
+          },
         });
-        token.id = dbUser?.id;
-        token.role = dbUser?.role || "FREE";
-        token.isPremium = dbUser?.role === "PREMIUM";
-        token.isAdmin = dbUser?.role === "ADMIN";
-        token.isStaff = dbUser?.role === "STAFF";
-        token.isSupport = dbUser?.role === "SUPPORT";
+
+        if (dbUser) {
+          token.id = dbUser.id;
+          token.role = dbUser.role || "FREE";
+
+          // Consumer flags
+          token.isPremium = dbUser.role === "PREMIUM";
+
+          // Staff flags
+          token.isAdmin = dbUser.role === "ADMIN";
+          token.isStaff = dbUser.role === "STAFF";
+          token.isSupport = dbUser.role === "SUPPORT";
+
+          // Recruiter flags
+          token.isRecruiter =
+            recruiterRoles.includes(dbUser.role || "") ||
+            !!dbUser.recruiterProfile;
+          token.recruiterProfileId = dbUser.recruiterProfile?.id ?? null;
+          token.companyName = dbUser.recruiterProfile?.companyName ?? null;
+        }
       }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
+
+        // Consumer flags
         (session.user as any).isPremium = token.isPremium;
+
+        // Staff flags
         (session.user as any).isAdmin = token.isAdmin;
         (session.user as any).isStaff = token.isStaff;
         (session.user as any).isSupport = token.isSupport;
+
+        // Recruiter flags
+        (session.user as any).isRecruiter = token.isRecruiter;
+        (session.user as any).recruiterProfileId = token.recruiterProfileId;
+        (session.user as any).companyName = token.companyName;
       }
       return session;
     },

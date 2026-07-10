@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { analyzeResume } from "@/lib/ai/resume-analyzer";
 import { checkUsageLimit, trackUsage, UserRole } from "@/lib/usage-limiter";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,7 +11,6 @@ export async function POST(req: NextRequest) {
     const userId = (session?.user as any)?.id;
     const role = ((session?.user as any)?.role || "FREE") as UserRole;
 
-    // Check usage limits for logged-in users
     if (userId) {
       const { allowed, usage } = await checkUsageLimit(
         userId,
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { resumeText } = await req.json();
+    const { resumeText, fileName } = await req.json();
 
     if (!resumeText || typeof resumeText !== "string") {
       return NextResponse.json(
@@ -65,9 +65,23 @@ export async function POST(req: NextRequest) {
     // Analyze
     const analysis = await analyzeResume(cleaned);
 
-    // Track usage
+    // Save to database if user is logged in
     if (userId) {
-      await trackUsage(userId, "resumeAnalysis");
+      try {
+        await prisma.resume.create({
+          data: {
+            userId,
+            title: fileName || `CV Analysis - ${new Date().toLocaleDateString()}`,
+            fileName: fileName || null,
+            rawText: cleaned.slice(0, 50000), // Limit stored text
+            parsedData: JSON.stringify(analysis),
+            atsScore: analysis.atsScore,
+          },
+        });
+        await trackUsage(userId, "resumeAnalysis");
+      } catch (dbError) {
+        console.error("Failed to save analysis:", dbError);
+      }
     }
 
     return NextResponse.json({

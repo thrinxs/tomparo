@@ -1,14 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
+import { generateSlug } from "@/app/api/recruiter/slug/check/route";
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const { name, email, phone, password } = await req.json();
+    const body = await request.json();
+    const {
+      name,
+      email,
+      phone,
+      password,
+      accountType,
+      companyName,
+      companySize,
+      industry,
+    } = body;
 
     if (!name || !email || !password) {
       return NextResponse.json(
-        { error: "Name, email, and password are required" },
+        { error: "Name, email and password are required" },
         { status: 400 }
       );
     }
@@ -20,22 +31,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (existingUser) {
+    if (accountType === "recruiter" && !companyName) {
       return NextResponse.json(
-        { error: "An account with this email already exists" },
-        { status: 409 }
+        { error: "Company name is required" },
+        { status: 400 }
       );
     }
 
-    // Hash password
+    // ── Check existing email ──
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "An account with this email already exists" },
+        { status: 400 }
+      );
+    }
+
+    // ── Check existing phone ──
+    if (phone) {
+      const existingPhone = await prisma.user.findFirst({ where: { phone } });
+      if (existingPhone) {
+        return NextResponse.json(
+          { error: "An account with this phone number already exists" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // ── Hash password ──
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create user
+    // ── Create user ──
     const user = await prisma.user.create({
       data: {
         name,
@@ -46,18 +72,44 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-      },
-    });
+    // ── If recruiter: create RecruiterProfile with auto-generated slug ──
+    if (accountType === "recruiter") {
+      // Generate base slug from company name
+      let baseSlug = generateSlug(companyName);
+      if (baseSlug.length < 3) baseSlug = "company";
+
+      // Find a unique slug (add number suffix if taken)
+      let slug = baseSlug;
+      let suffix = 2;
+      while (true) {
+        const existing = await prisma.recruiterProfile.findFirst({
+          where: { companySlug: slug },
+        });
+        if (!existing) break;
+        slug = `${baseSlug}${suffix}`;
+        suffix++;
+      }
+
+      await prisma.recruiterProfile.create({
+        data: {
+          userId: user.id,
+          companyName,
+          companySize: companySize || null,
+          industry: industry || null,
+          companySlug: slug,
+          slugLocked: false,
+        },
+      });
+    }
+
+    return NextResponse.json(
+      { message: "Account created successfully", userId: user.id },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("Signup error:", error);
     return NextResponse.json(
-      { error: "Failed to create account. Please try again." },
+      { error: "Something went wrong. Please try again." },
       { status: 500 }
     );
   }

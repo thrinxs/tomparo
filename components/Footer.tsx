@@ -14,7 +14,8 @@ export default function Footer() {
     pathname?.startsWith("/dashboard") ||
     pathname?.startsWith("/admin") ||
     pathname?.startsWith("/staff") ||
-    pathname?.startsWith("/support");
+    pathname?.startsWith("/support") ||
+    pathname?.startsWith("/recruiter/"); // ← hides on /recruiter/* but NOT /recruiter-pricing
 
   if (hideFooter) return null;
 
