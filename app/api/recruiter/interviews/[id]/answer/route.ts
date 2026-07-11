@@ -2,73 +2,61 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { scoreInterviewAnswer } from "@/lib/ai/interview-engine";
 
-// ── Public — candidate submits answer via share link ───────────────────────────
-
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const { questionId, answer, shareToken } = await req.json();
+    const { questionId, answer, shareToken, skipped } = await req.json();
 
     if (!questionId || !answer?.trim()) {
-      return NextResponse.json(
-        { error: "Question ID and answer are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Question ID and answer are required" }, { status: 400 });
     }
 
-    // Verify interview exists and share token matches (for ASYNC mode)
     const interview = await prisma.recruiterInterview.findUnique({
       where: { id },
       include: { questions: true },
     });
 
-    if (!interview) {
-      return NextResponse.json({ error: "Interview not found" }, { status: 404 });
-    }
-
+    if (!interview) return NextResponse.json({ error: "Interview not found" }, { status: 404 });
     if (interview.status === "COMPLETED" || interview.status === "CANCELLED") {
       return NextResponse.json({ error: "This interview is no longer active" }, { status: 400 });
     }
-
-    // For ASYNC mode, verify share token
     if (interview.mode === "ASYNC" && interview.shareToken !== shareToken) {
       return NextResponse.json({ error: "Invalid interview link" }, { status: 403 });
     }
 
-    // Find the question
     const question = interview.questions.find((q) => q.id === questionId);
-    if (!question) {
-      return NextResponse.json({ error: "Question not found" }, { status: 404 });
+    if (!question) return NextResponse.json({ error: "Question not found" }, { status: 404 });
+    if (question.candidateAnswer) return NextResponse.json({ error: "Already answered" }, { status: 400 });
+
+    let score = 0;
+    let feedback = "Question was skipped.";
+
+    if (!skipped) {
+      const result = await scoreInterviewAnswer({
+        question: question.question,
+        questionType: question.questionType,
+        candidateAnswer: answer,
+        jobTitle: interview.jobTitle || undefined,
+        candidateName: interview.candidateName,
+      });
+      score = result.score;
+      feedback = result.feedback;
     }
 
-    if (question.candidateAnswer) {
-      return NextResponse.json({ error: "Question already answered" }, { status: 400 });
-    }
-
-    // ── AI scores the answer ──
-    const { score, feedback } = await scoreInterviewAnswer({
-      question: question.question,
-      questionType: question.questionType,
-      candidateAnswer: answer,
-      jobTitle: interview.jobTitle || undefined,
-      candidateName: interview.candidateName,
-    });
-
-    // ── Update question ──
     await prisma.recruiterInterviewQuestion.update({
       where: { id: questionId },
       data: {
         candidateAnswer: answer,
-        aiScore: score,
-        aiFeedback: feedback,
+        aiScore: skipped ? null : score,
+        aiFeedback: skipped ? null : feedback,
+        skipped: !!skipped,
         answeredAt: new Date(),
       },
     });
 
-    // ── Update interview answered count + status ──
     const answeredCount = interview.questions.filter(
       (q) => q.candidateAnswer || q.id === questionId
     ).length;

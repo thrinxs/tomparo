@@ -201,24 +201,25 @@ model RecruiterProfile {
   id              String    @id @default(cuid())
   userId          String    @unique
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  replyToEmail    String? 
-  companySlug     String?   @unique   
-  slugLocked      Boolean   @default(false) 
+  replyToEmail    String?
+  companySlug     String?   @unique
+  slugLocked      Boolean   @default(false)
   activityLogs    RecruiterActivityLog[]
   teamMembers     RecruiterTeamMember[]
   invites         RecruiterInvite[]
   interviews      RecruiterInterview[]
+  interviewSettings RecruiterInterviewSettings?
 
   // Company Info
   companyName     String
-  companySize     String?   // "1-10", "11-50", "51-200", "201-500", "500+"
+  companySize     String?
   industry        String?
   website         String?
   emailsSent      RecruiterEmail[]
   logo            String?
   description     String?   @db.Text
 
-  // Usage Tracking (resets monthly)
+  // Usage Tracking
   cvsUsedThisMonth Int      @default(0)
   cvsResetDate     DateTime @default(now())
 
@@ -231,13 +232,35 @@ model RecruiterProfile {
   updatedAt       DateTime  @updatedAt
 }
 
+// ── Global Interview Message Template ─────────────────────────────────────────
+
+model RecruiterInterviewSettings {
+  id          String           @id @default(cuid())
+  recruiterId String           @unique
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  // Global opening
+  globalOpening       String?  @db.Text
+  globalOpeningType   MessageType @default(TEXT)
+  globalOpeningUrl    String?
+
+  // Global closing
+  globalClosing       String?  @db.Text
+  globalClosingType   MessageType @default(TEXT)
+  globalClosingUrl    String?
+
+  // Global mid-interview instructions (JSON array)
+  globalInstructions  String?  @db.Text
+
+  updatedAt   DateTime @updatedAt @default(now())
+}
+
 model JobPosting {
   id              String    @id @default(cuid())
   recruiterId     String
   recruiter       RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
   interviews      RecruiterInterview[]
 
-  // Job Details
   jobSlug         String?
   title           String
   description     String    @db.Text
@@ -248,13 +271,10 @@ model JobPosting {
   salaryMax       Int?
   salaryCurrency  String?   @default("NGN")
   deadline        DateTime?
-
-  // Status
   status          JobStatus @default(DRAFT)
 
-  // Relations
   candidates      RecruiterCandidate[]
-  applications    RecruiterApplication[]  
+  applications    RecruiterApplication[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -267,24 +287,19 @@ model RecruiterCandidate {
   emails          RecruiterEmail[]
   interviews      RecruiterInterview[]
 
-  // Optional link to a specific job
   jobId           String?
   job             JobPosting? @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
-  // CV Info
   fileName        String
   rawText         String    @db.Text
 
-  // Extracted by AI
   candidateName   String?
   candidateEmail  String?
   candidatePhone  String?
 
-  // AI Analysis (stored as JSON string)
   aiAnalysis      String?   @db.Text
   atsScore        Int?      @default(0)
 
-  // Workflow Status
   status          CandidateStatus @default(NEW)
   notes           String?   @db.Text
 
@@ -292,41 +307,15 @@ model RecruiterCandidate {
   updatedAt       DateTime  @updatedAt
 }
 
-// ── Enums ─────────────────────────────────────────────
-enum JobType {
-  FULL_TIME
-  PART_TIME
-  CONTRACT
-  REMOTE
-  HYBRID
-}
-
-enum JobStatus {
-  DRAFT
-  ACTIVE
-  PAUSED
-  CLOSED
-}
-
-enum CandidateStatus {
-  NEW
-  REVIEWED
-  SHORTLISTED
-  REJECTED
-  HIRED
-}
-
 model RecruiterEmail {
   id              String    @id @default(cuid())
   recruiterId     String
   recruiter       RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
 
-  // Candidate link
   candidateId     String?
   candidate       RecruiterCandidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
 
-  // Email details
-  type            String    // interview_invite, rejection, offer, followup, waitlist
+  type            String
   to              String
   subject         String
   message         String    @db.Text
@@ -335,11 +324,10 @@ model RecruiterEmail {
   hasAttachment   Boolean   @default(false)
   attachmentName  String?
 
-  // Status
-  status          String    @default("sent") // sent, failed
-  resendId        String?   // Resend message ID for tracking
+  status          String    @default("sent")
+  resendId        String?
   openedAt        DateTime?
-  openCount       Int        @default(0)
+  openCount       Int       @default(0)
 
   createdAt       DateTime  @default(now())
 }
@@ -351,42 +339,26 @@ model RecruiterApplication {
   cvFileUrl       String?
   interviews      RecruiterInterview[]
 
-  // Which job they applied for
   jobId           String?
   job             JobPosting? @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
-  // Candidate info (from form)
   candidateName   String
   candidateEmail  String
   candidatePhone  String?
   coverLetter     String?   @db.Text
 
-  // CV
   cvText          String?   @db.Text
   cvFileName      String?
 
-  // AI Analysis
   aiAnalysis      String?   @db.Text
   atsScore        Int?      @default(0)
   aiSummary       String?   @db.Text
 
-  // Source
-  source          String    @default("form") // "form" | "email"
-
-  // Status
+  source          String    @default("form")
   status          ApplicationStatus @default(UNREAD)
 
-  // Timestamps
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-}
-
-enum ApplicationStatus {
-  UNREAD
-  READ
-  SHORTLISTED
-  REJECTED
-  HIRED
 }
 
 // ── Phase 4: Activity Log ──────────────────────────────────────────────────────
@@ -398,14 +370,12 @@ model RecruiterActivityLog {
   type        ActivityType
   title       String
   description String?
-  meta        String?  // JSON — extra data (candidateName, jobTitle, emailType, etc.)
+  meta        String?
   createdAt   DateTime @default(now())
 
   @@index([recruiterId])
   @@index([createdAt])
 }
-
-// ── Phase 4: Team Members ──────────────────────────────────────────────────────
 
 model RecruiterTeamMember {
   id          String     @id @default(cuid())
@@ -419,8 +389,6 @@ model RecruiterTeamMember {
   @@unique([recruiterId, userId])
   @@index([recruiterId])
 }
-
-// ── Phase 4: Team Invites ──────────────────────────────────────────────────────
 
 model RecruiterInvite {
   id          String       @id @default(cuid())
@@ -436,61 +404,6 @@ model RecruiterInvite {
 
   @@index([recruiterId])
   @@index([token])
-}
-
-enum ActivityType {
-  CV_UPLOADED
-  CV_BULK_UPLOADED
-  JOB_CREATED
-  JOB_UPDATED
-  JOB_CLOSED
-  APPLICATION_RECEIVED
-  CANDIDATE_STATUS_CHANGED
-  EMAIL_SENT
-  BULK_EMAIL_SENT
-  TEAM_MEMBER_INVITED
-  TEAM_MEMBER_JOINED
-  TEAM_MEMBER_REMOVED
-  SETTINGS_UPDATED
-}
-
-enum TeamRole {
-  OWNER
-  ADMIN
-  MEMBER
-}
-
-enum InviteStatus {
-  PENDING
-  ACCEPTED
-  EXPIRED
-  CANCELLED
-}
-// ── Phase 5: Interview Enums ───────────────────────────────────────────────────
-
-enum InterviewStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
-enum InterviewMode {
-  ASYNC
-  LIVE
-}
-
-enum InterviewType {
-  TEXT
-  VOICE
-  VIDEO
-}
-
-enum QuestionType {
-  CV_VERIFICATION
-  LOCATION_BASED
-  JOB_SPECIFIC
-  BEHAVIOURAL
 }
 
 // ── Phase 5: Interviews ────────────────────────────────────────────────────────
@@ -510,11 +423,32 @@ model RecruiterInterview {
   mode                  InterviewMode     @default(ASYNC)
   status                InterviewStatus   @default(PENDING)
 
+  // Live takeover
+  isLive                Boolean           @default(false)
+  liveStartedAt         DateTime?
+  liveMessage           String?           @db.Text // recruiter types → AI reads
+
   candidateName         String
   candidateEmail        String?
   candidateLocation     String?
   jobTitle              String?
   cvSummary             String?           @db.Text
+
+  // Per-interview custom messages
+  openingMessage        String?           @db.Text
+  openingMessageType    MessageType       @default(TEXT)
+  openingMessageUrl     String?
+
+  closingMessage        String?           @db.Text
+  closingMessageType    MessageType       @default(TEXT)
+  closingMessageUrl     String?
+
+  // Mid-interview instructions (JSON array of {trigger, type, timing, message})
+  customInstructions    String?           @db.Text
+
+  // Recording
+  recordingUrl          String?           // Supabase Storage path
+  recordingUploadedAt   DateTime?
 
   shareToken            String            @unique @default(cuid())
 
@@ -551,10 +485,104 @@ model RecruiterInterviewQuestion {
   candidateAnswer String?             @db.Text
   aiScore         Int?
   aiFeedback      String?             @db.Text
+  skipped         Boolean             @default(false)
 
   answeredAt      DateTime?
   createdAt       DateTime            @default(now())
 
   @@index([interviewId])
   @@index([order])
+}
+
+// ── Enums ──────────────────────────────────────────────────────────────────────
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  REMOTE
+  HYBRID
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+enum CandidateStatus {
+  NEW
+  REVIEWED
+  SHORTLISTED
+  REJECTED
+  HIRED
+}
+
+enum ApplicationStatus {
+  UNREAD
+  READ
+  SHORTLISTED
+  REJECTED
+  HIRED
+}
+
+enum ActivityType {
+  CV_UPLOADED
+  CV_BULK_UPLOADED
+  JOB_CREATED
+  JOB_UPDATED
+  JOB_CLOSED
+  APPLICATION_RECEIVED
+  CANDIDATE_STATUS_CHANGED
+  EMAIL_SENT
+  BULK_EMAIL_SENT
+  TEAM_MEMBER_INVITED
+  TEAM_MEMBER_JOINED
+  TEAM_MEMBER_REMOVED
+  SETTINGS_UPDATED
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+enum InterviewStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InterviewMode {
+  ASYNC
+  LIVE
+}
+
+enum InterviewType {
+  TEXT
+  VOICE
+  VIDEO
+}
+
+enum MessageType {
+  TEXT
+  AUDIO
+  VIDEO
+}
+
+enum QuestionType {
+  CV_VERIFICATION
+  LOCATION_BASED
+  JOB_SPECIFIC
+  BEHAVIOURAL
 }
