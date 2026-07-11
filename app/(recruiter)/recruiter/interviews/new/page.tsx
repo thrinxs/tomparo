@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, ChevronRight, MessageSquare, Video, Zap,
-  Loader2, Briefcase, User, CheckCircle, AlertTriangle, Mic, Type,
+  Loader2, Briefcase, User, CheckCircle, AlertTriangle,
+  Mic, Type, Plus, Trash2, ChevronDown, ChevronUp,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -15,7 +16,7 @@ const interviewTypes = [
     label: "Text",
     icon: Type,
     color: "indigo",
-    description: "Candidate types their answers. Works on any device, any browser.",
+    description: "Candidate types answers. Works on any device, any browser.",
     perks: ["✍️ Any device", "🌐 Any browser", "📝 Full control"],
   },
   {
@@ -23,45 +24,48 @@ const interviewTypes = [
     label: "Voice",
     icon: Mic,
     color: "violet",
-    description: "Candidate speaks their answers. Browser transcribes speech to text in real time.",
-    perks: ["🎙️ Speak naturally", "⚡ Real-time transcription", "🌐 Chrome & Edge"],
+    description: "AI reads questions aloud. Candidate speaks answers. Like a real phone interview.",
+    perks: ["🎙️ AI voice reads questions", "👂 Candidate speaks answers", "🔇 Silence detection"],
   },
   {
     value: "VIDEO",
     label: "Video",
     icon: Video,
     color: "pink",
-    description: "Candidate records a short video answer per question. Most personal format.",
+    description: "Candidate records a short video answer per question.",
     perks: ["📹 Camera + mic", "👁️ Body language visible", "🎬 Recorded per question"],
   },
 ];
 
-const colorMap: Record<string, { border: string; bg: string; icon: string; check: string; badge: string; badgeText: string }> = {
-  indigo: {
-    border: "border-indigo-500",
-    bg: "bg-indigo-500/10",
-    icon: "bg-indigo-500/20",
-    check: "text-indigo-400",
-    badge: "bg-indigo-500/20",
-    badgeText: "text-indigo-400",
-  },
-  violet: {
-    border: "border-violet-500",
-    bg: "bg-violet-500/10",
-    icon: "bg-violet-500/20",
-    check: "text-violet-400",
-    badge: "bg-violet-500/20",
-    badgeText: "text-violet-400",
-  },
-  pink: {
-    border: "border-pink-500",
-    bg: "bg-pink-500/10",
-    icon: "bg-pink-500/20",
-    check: "text-pink-400",
-    badge: "bg-pink-500/20",
-    badgeText: "text-pink-400",
-  },
+const colorMap: Record<string, {
+  border: string; bg: string; icon: string; check: string; badge: string; badgeText: string;
+}> = {
+  indigo: { border: "border-indigo-500", bg: "bg-indigo-500/10", icon: "bg-indigo-500/20", check: "text-indigo-400", badge: "bg-indigo-500/20", badgeText: "text-indigo-400" },
+  violet: { border: "border-violet-500", bg: "bg-violet-500/10", icon: "bg-violet-500/20", check: "text-violet-400", badge: "bg-violet-500/20", badgeText: "text-violet-400" },
+  pink: { border: "border-pink-500", bg: "bg-pink-500/10", icon: "bg-pink-500/20", check: "text-pink-400", badge: "bg-pink-500/20", badgeText: "text-pink-400" },
 };
+
+const triggerOptions = [
+  { value: "before_question", label: "Before a specific question number" },
+  { value: "question_type", label: "Before every question of a type" },
+  { value: "timed", label: "After a set number of minutes" },
+];
+
+const questionTypeOptions = [
+  { value: "CV_VERIFICATION", label: "CV Verification" },
+  { value: "LOCATION_BASED", label: "Location Based" },
+  { value: "JOB_SPECIFIC", label: "Job Specific" },
+  { value: "BEHAVIOURAL", label: "Behavioural" },
+];
+
+interface Instruction {
+  id: string;
+  trigger: "before_question" | "question_type" | "timed";
+  questionIndex?: number;
+  questionType?: string;
+  afterMinutes?: number;
+  message: string;
+}
 
 function NewInterviewInner() {
   const router = useRouter();
@@ -69,7 +73,6 @@ function NewInterviewInner() {
 
   const candidateId = searchParams.get("candidateId") || "";
   const initialMode = (searchParams.get("mode") as "ASYNC" | "LIVE") || "ASYNC";
-  const candidateName = searchParams.get("name") || "Candidate";
 
   const [mode, setMode] = useState<"ASYNC" | "LIVE">(initialMode);
   const [interviewType, setInterviewType] = useState<"TEXT" | "VOICE" | "VIDEO">("TEXT");
@@ -79,9 +82,17 @@ function NewInterviewInner() {
   const [loadingCandidate, setLoadingCandidate] = useState(true);
   const [creating, setCreating] = useState(false);
 
+  // ── Messages ──
+  const [openingMessage, setOpeningMessage] = useState("");
+  const [closingMessage, setClosingMessage] = useState("");
+  const [instructions, setInstructions] = useState<Instruction[]>([]);
+  const [showMessages, setShowMessages] = useState(false);
+  const [globalSettings, setGlobalSettings] = useState<any>(null);
+
+  // Fetch candidate
   useEffect(() => {
     if (!candidateId) return;
-    const fetchCandidate = async () => {
+    const fetch_ = async () => {
       try {
         const res = await fetch(`/api/recruiter/candidates/${candidateId}`);
         const data = await res.json();
@@ -92,23 +103,50 @@ function NewInterviewInner() {
         setLoadingCandidate(false);
       }
     };
-    fetchCandidate();
+    fetch_();
   }, [candidateId]);
 
+  // Fetch jobs
   useEffect(() => {
-    const fetchJobs = async () => {
+    const fetch_ = async () => {
       try {
         const res = await fetch("/api/recruiter/jobs");
         const data = await res.json();
         if (data.jobs) {
-          const active = data.jobs.filter((j: any) => j.status === "ACTIVE");
-          setJobs(active);
+          setJobs(data.jobs.filter((j: any) => j.status === "ACTIVE"));
           if (candidate?.job?.id) setSelectedJobId(candidate.job.id);
         }
       } catch {}
     };
-    fetchJobs();
+    fetch_();
   }, [candidate]);
+
+  // Fetch global settings (to show placeholders)
+  useEffect(() => {
+    const fetch_ = async () => {
+      try {
+        const res = await fetch("/api/recruiter/interview-settings");
+        const data = await res.json();
+        if (data.settings) setGlobalSettings(data.settings);
+      } catch {}
+    };
+    fetch_();
+  }, []);
+
+  const addInstruction = () => {
+    setInstructions((prev) => [
+      ...prev,
+      { id: Math.random().toString(36).slice(2), trigger: "before_question", questionIndex: 2, message: "" },
+    ]);
+  };
+
+  const updateInstruction = (id: string, updates: Partial<Instruction>) => {
+    setInstructions((prev) => prev.map((ins) => ins.id === id ? { ...ins, ...updates } : ins));
+  };
+
+  const removeInstruction = (id: string) => {
+    setInstructions((prev) => prev.filter((ins) => ins.id !== id));
+  };
 
   const handleCreate = async () => {
     if (!candidateId) { toast.error("No candidate selected"); return; }
@@ -122,6 +160,9 @@ function NewInterviewInner() {
           mode,
           interviewType,
           jobId: selectedJobId || undefined,
+          openingMessage: openingMessage.trim() || undefined,
+          closingMessage: closingMessage.trim() || undefined,
+          customInstructions: instructions.length > 0 ? instructions : undefined,
         }),
       });
       const data = await res.json();
@@ -141,6 +182,9 @@ function NewInterviewInner() {
 
   const selectedTypeConfig = interviewTypes.find((t) => t.value === interviewType)!;
   const selectedColor = colorMap[selectedTypeConfig.color];
+
+  const defaultOpening = `Hi ${candidate?.candidateName?.split(" ")[0] || "[Name]"}! Welcome to your interview${selectedJobId && jobs.find(j => j.id === selectedJobId) ? ` for the ${jobs.find(j => j.id === selectedJobId)?.title} position` : ""}. I'm your AI interviewer today. Let's begin.`;
+  const defaultClosing = `That's all for today, ${candidate?.candidateName?.split(" ")[0] || "[Name]"}. Thank you for your time. The team will review your responses and be in touch soon. Good luck!`;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-12">
@@ -193,7 +237,9 @@ function NewInterviewInner() {
                 <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10">
                   <span className="text-xs text-slate-400">ATS:</span>
                   <span className={`text-xs font-bold ${
-                    candidate.atsScore >= 80 ? "text-emerald-400" : candidate.atsScore >= 60 ? "text-amber-400" : "text-red-400"
+                    candidate.atsScore >= 80 ? "text-emerald-400"
+                    : candidate.atsScore >= 60 ? "text-amber-400"
+                    : "text-red-400"
                   }`}>{candidate.atsScore}/100</span>
                   {analysis?.hiringRecommendation && (
                     <>
@@ -218,7 +264,7 @@ function NewInterviewInner() {
         )}
       </div>
 
-      {/* Interview Type picker */}
+      {/* Interview Type */}
       <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
           Interview Type — How will the candidate answer?
@@ -237,9 +283,7 @@ function NewInterviewInner() {
                 }`}
               >
                 <div className="flex items-center justify-between mb-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                    isSelected ? colors.icon : "bg-white/5"
-                  }`}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isSelected ? colors.icon : "bg-white/5"}`}>
                     <Icon className={`w-4 h-4 ${isSelected ? colors.check : "text-slate-500"}`} />
                   </div>
                   {isSelected && <CheckCircle className={`w-4 h-4 ${colors.check}`} />}
@@ -259,9 +303,11 @@ function NewInterviewInner() {
         </div>
       </div>
 
-      {/* Interview Mode picker */}
+      {/* Interview Mode */}
       <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Interview Mode — Who's present?</p>
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          Interview Mode — Who's present?
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             onClick={() => setMode("ASYNC")}
@@ -280,7 +326,7 @@ function NewInterviewInner() {
               <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/20 text-indigo-400 uppercase">Recommended</span>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Candidate answers on their own time via a private link. No scheduling needed.
+              Candidate answers on their own time via a private link. You can go live anytime.
             </p>
           </button>
           <button
@@ -345,9 +391,218 @@ function NewInterviewInner() {
         </div>
       </div>
 
+      {/* ── Custom Messages (collapsible) ── */}
+      <div className="rounded-3xl border border-white/10 bg-white/[0.02] overflow-hidden">
+        <button
+          onClick={() => setShowMessages(!showMessages)}
+          className="w-full flex items-center justify-between p-6 hover:bg-white/[0.02] transition"
+        >
+          <div>
+            <p className="text-sm font-semibold text-white text-left">
+              Custom Interview Messages
+              <span className="ml-2 text-xs text-slate-500 font-normal">(optional)</span>
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5 text-left">
+              {globalSettings?.globalOpening
+                ? "You have a global template — override it here for this interview"
+                : "Add a personal opening, closing, or mid-interview instructions"}
+            </p>
+          </div>
+          {showMessages
+            ? <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+            : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+          }
+        </button>
+
+        {showMessages && (
+          <div className="px-6 pb-6 space-y-6 border-t border-white/5 pt-6">
+
+            {/* Opening message */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-white">
+                Opening Message
+              </label>
+              <p className="text-[11px] text-slate-500">
+                AI reads this aloud at the start of the interview.
+                {globalSettings?.globalOpening && (
+                  <span className="text-indigo-400"> Global template active — leave blank to use it.</span>
+                )}
+              </p>
+              <textarea
+                value={openingMessage}
+                onChange={(e) => setOpeningMessage(e.target.value)}
+                placeholder={globalSettings?.globalOpening || defaultOpening}
+                rows={3}
+                className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 resize-none transition"
+              />
+              <p className="text-[10px] text-slate-600">
+                Use [Name] for candidate name, [Job] for job title, [Company] for company name.
+              </p>
+            </div>
+
+            {/* Closing message */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-white">
+                Closing Message
+              </label>
+              <p className="text-[11px] text-slate-500">
+                AI reads this aloud after all questions are answered.
+                {globalSettings?.globalClosing && (
+                  <span className="text-indigo-400"> Global template active — leave blank to use it.</span>
+                )}
+              </p>
+              <textarea
+                value={closingMessage}
+                onChange={(e) => setClosingMessage(e.target.value)}
+                placeholder={globalSettings?.globalClosing || defaultClosing}
+                rows={3}
+                className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 resize-none transition"
+              />
+            </div>
+
+            {/* Mid-interview instructions */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-semibold text-white">
+                    Mid-Interview Instructions
+                  </label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    AI will say these at specific points during the interview.
+                  </p>
+                </div>
+                <button
+                  onClick={addInstruction}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-500 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add
+                </button>
+              </div>
+
+              {instructions.length === 0 && (
+                <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 text-center">
+                  <p className="text-xs text-slate-500">
+                    No instructions yet. Add one to have AI say something at a specific point.
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1">
+                    Example: "Before question 5, say: We're now moving to the technical section."
+                  </p>
+                </div>
+              )}
+
+              {instructions.map((ins, idx) => (
+                <div key={ins.id} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-white">Instruction {idx + 1}</p>
+                    <button
+                      onClick={() => removeInstruction(ins.id)}
+                      className="p-1 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Trigger type */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">When to say it</label>
+                    <div className="flex flex-col gap-1.5">
+                      {triggerOptions.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => updateInstruction(ins.id, { trigger: opt.value as any })}
+                          className={`text-left px-3 py-2 rounded-lg text-xs transition ${
+                            ins.trigger === opt.value
+                              ? "bg-purple-500/10 border border-purple-500/20 text-purple-400"
+                              : "bg-white/[0.02] border border-white/5 text-slate-400 hover:border-white/10"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Trigger value */}
+                  {ins.trigger === "before_question" && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                        Before question number
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={ins.questionIndex || 2}
+                        onChange={(e) => updateInstruction(ins.id, { questionIndex: parseInt(e.target.value) })}
+                        className="w-24 rounded-lg border border-white/10 bg-slate-900/50 px-3 py-1.5 text-sm text-white outline-none focus:border-purple-500/50 transition"
+                      />
+                    </div>
+                  )}
+
+                  {ins.trigger === "question_type" && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                        Before every question of type
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {questionTypeOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => updateInstruction(ins.id, { questionType: opt.value })}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs transition ${
+                              ins.questionType === opt.value
+                                ? "bg-purple-500/10 border border-purple-500/20 text-purple-400"
+                                : "bg-white/[0.02] border border-white/5 text-slate-400 hover:border-white/10"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {ins.trigger === "timed" && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                        After how many minutes
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={ins.afterMinutes || 5}
+                        onChange={(e) => updateInstruction(ins.id, { afterMinutes: parseInt(e.target.value) })}
+                        className="w-24 rounded-lg border border-white/10 bg-slate-900/50 px-3 py-1.5 text-sm text-white outline-none focus:border-purple-500/50 transition"
+                      />
+                    </div>
+                  )}
+
+                  {/* Message */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                      What should AI say
+                    </label>
+                    <textarea
+                      value={ins.message}
+                      onChange={(e) => updateInstruction(ins.id, { message: e.target.value })}
+                      placeholder='e.g. "Great work so far. We are now moving to the technical section of the interview."'
+                      rows={2}
+                      className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-purple-500/50 resize-none transition"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Question sources */}
       <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">AI Will Generate Questions From</p>
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          AI Will Generate Questions From
+        </p>
         <div className="grid grid-cols-2 gap-2">
           {[
             { label: "CV Verification", desc: "Verify experience & claims", color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
@@ -363,7 +618,9 @@ function NewInterviewInner() {
         </div>
         <p className="text-xs text-slate-600 mt-3">
           8–10 questions · Per-answer AI scoring · Final summary + hire recommendation ·{" "}
-          <span className={`font-semibold ${selectedColor.check}`}>{selectedTypeConfig.label} format</span>
+          <span className={`font-semibold ${selectedColor.check}`}>
+            {selectedTypeConfig.label} format
+          </span>
         </p>
       </div>
 
