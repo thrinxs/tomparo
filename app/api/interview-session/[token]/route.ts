@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const ELEVENLABS_PLANS = [
+  "RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE",
+  "RECRUITER_CUSTOM", "ADMIN",
+];
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
@@ -31,6 +36,7 @@ export async function GET(
         recruiter: {
           select: {
             companyName: true,
+            userId: true,
             interviewSettings: {
               select: {
                 globalOpening: true,
@@ -40,6 +46,7 @@ export async function GET(
                 globalClosingType: true,
                 globalClosingUrl: true,
                 globalInstructions: true,
+                defaultVoiceId: true,
               },
             },
           },
@@ -55,7 +62,29 @@ export async function GET(
       return NextResponse.json({ error: "This interview has been cancelled" }, { status: 400 });
     }
 
-    // ── Resolve CV data from candidate or application ──
+    // ── Resolve recruiter plan for voice tier ──
+    let voiceTier: "web-speech" | "elevenlabs" = "web-speech";
+    let resolvedVoiceId: string | null = interview.voiceId || null;
+
+    if (interview.recruiter?.userId) {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: interview.recruiter.userId },
+          select: { role: true },
+        });
+        if (user && ELEVENLABS_PLANS.includes(user.role)) {
+          voiceTier = "elevenlabs";
+          // Use interview voiceId, or recruiter default, or TomParo default
+          if (!resolvedVoiceId) {
+            resolvedVoiceId =
+              interview.recruiter.interviewSettings?.defaultVoiceId ||
+              "nPczCjzI2devNBz1zQrb"; // Brian (default male)
+          }
+        }
+      } catch {}
+    }
+
+    // ── CV data ──
     const cvSource = interview.candidate || interview.application;
     let cvData: any = null;
     if (cvSource?.aiAnalysis) {
@@ -71,21 +100,18 @@ export async function GET(
       } catch {}
     }
 
-    // ── Resolve messages (per-interview overrides global) ──
+    // ── Messages ──
     const globalSettings = interview.recruiter?.interviewSettings;
-
     const opening = {
       message: interview.openingMessage || globalSettings?.globalOpening || null,
       type: interview.openingMessageType || globalSettings?.globalOpeningType || "TEXT",
       url: interview.openingMessageUrl || globalSettings?.globalOpeningUrl || null,
     };
-
     const closing = {
       message: interview.closingMessage || globalSettings?.globalClosing || null,
       type: interview.closingMessageType || globalSettings?.globalClosingType || "TEXT",
       url: interview.closingMessageUrl || globalSettings?.globalClosingUrl || null,
     };
-
     const instructions = (() => {
       const perInterview = interview.customInstructions;
       const global = globalSettings?.globalInstructions;
@@ -109,6 +135,10 @@ export async function GET(
         totalQuestions: interview.totalQuestions,
         answeredQuestions: interview.answeredQuestions,
         completedAt: interview.completedAt,
+        allowFollowUps: interview.allowFollowUps,
+        followUpCount: interview.followUpCount,
+        voiceTier,
+        voiceId: resolvedVoiceId,
         cvData,
         opening,
         closing,
@@ -120,7 +150,8 @@ export async function GET(
           order: q.order,
           answered: !!q.candidateAnswer,
           skipped: q.skipped,
-          // Never expose scores to candidate
+          isFollowUp: q.isFollowUp,
+          parentQuestionId: q.parentQuestionId,
         })),
       },
     });

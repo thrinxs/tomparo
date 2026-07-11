@@ -6,31 +6,27 @@ import {
   Mic, Loader2, CheckCircle, AlertTriangle,
   Volume2, VolumeX, SkipForward, RotateCcw, Send,
   User, Calendar, ChevronRight, MessageSquare, Play, Square,
+  CornerDownRight,
 } from "lucide-react";
+import { ELEVENLABS_VOICES, DEFAULT_MALE_VOICE_ID, DEFAULT_FEMALE_VOICE_ID } from "@/lib/ai/interview-engine";
 
-// ── Constants ──────────────────────────────────────────────────────────────────
-const SILENCE_THRESHOLD = 8;
-const POLL_INTERVAL_MS = 3000;
-
-// ── Lerp helper ────────────────────────────────────────────────────────────────
+// ── Pace slider ────────────────────────────────────────────────────────────────
 function lerp(a: number, b: number, t: number) {
   return Math.round(a + (b - a) * t);
 }
-
-function paceFromSlider(value: number) {
-  const t = value / 100;
+function paceFromSlider(v: number) {
+  const t = v / 100;
   return {
     silenceRepeat: lerp(8000, 1200, t),
     silenceSkip: lerp(14000, 2000, t),
     speechRate: parseFloat((0.72 + (1.15 - 0.72) * t).toFixed(2)),
   };
 }
-
-function paceLabel(value: number) {
-  if (value <= 15) return "Very Patient 🐢";
-  if (value <= 35) return "Relaxed";
-  if (value <= 60) return "Normal 🚶";
-  if (value <= 80) return "Brisk";
+function paceLabel(v: number) {
+  if (v <= 15) return "Very Patient 🐢";
+  if (v <= 35) return "Relaxed";
+  if (v <= 60) return "Normal 🚶";
+  if (v <= 80) return "Brisk";
   return "Fast 🏃";
 }
 
@@ -57,7 +53,6 @@ const MALE_NAMES = new Set([
   "obinna","chibuike","ugochukwu","kelechi","nnamdi","chinedu","ike","ikenna",
   "amara","eze","uche","uzoma","chukwuma","obi","chibundo","chisom",
 ]);
-
 const FEMALE_NAMES = new Set([
   "mary","patricia","jennifer","linda","barbara","elizabeth","susan","jessica",
   "sarah","karen","lisa","nancy","betty","margaret","sandra","ashley","dorothy",
@@ -75,195 +70,160 @@ const FEMALE_NAMES = new Set([
   "tolani","folake","bimpe","sade","yetunde","gbemi","ronke","bisi","funke",
   "tope","kemi","wura","shade","bunmi","toyin","abike","yinka","lola",
 ]);
-
-function detectGenderFromName(name: string): "male" | "female" | null {
+function detectGender(name: string): "male" | "female" | null {
   const first = name.trim().split(" ")[0].toLowerCase();
   if (MALE_NAMES.has(first)) return "male";
   if (FEMALE_NAMES.has(first)) return "female";
   return null;
 }
 
-// ── Speech helpers ─────────────────────────────────────────────────────────────
-function getEnglishVoices(): SpeechSynthesisVoice[] {
-  return window.speechSynthesis
-    .getVoices()
-    .filter((v) => v.lang.startsWith("en"))
-    .sort((a, b) => a.name.localeCompare(b.name));
+const SILENCE_THRESHOLD = 8;
+const POLL_INTERVAL_MS = 3000;
+
+// ── ElevenLabs TTS ─────────────────────────────────────────────────────────────
+async function speakElevenLabs(
+  text: string,
+  voiceId: string,
+  onEnd: () => void
+): Promise<() => void> {
+  let cancelled = false;
+  let audioEl: HTMLAudioElement | null = null;
+
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text.trim(), voiceId }),
+    });
+
+    if (!res.ok) throw new Error("TTS failed");
+
+    const blob = await res.blob();
+    if (cancelled) return () => {};
+
+    const url = URL.createObjectURL(blob);
+    audioEl = new Audio(url);
+    audioEl.onended = () => { URL.revokeObjectURL(url); if (!cancelled) onEnd(); };
+    audioEl.onerror = () => { URL.revokeObjectURL(url); if (!cancelled) onEnd(); };
+    audioEl.play();
+  } catch {
+    if (!cancelled) onEnd();
+  }
+
+  return () => {
+    cancelled = true;
+    if (audioEl) { audioEl.pause(); audioEl.src = ""; }
+  };
 }
 
-function getDefaultVoice(
-  gender: "male" | "female" | "prefer-not-to-say",
-  voices: SpeechSynthesisVoice[]
-): SpeechSynthesisVoice | null {
-  if (!voices.length) return null;
-  const target = gender === "prefer-not-to-say" ? null : gender;
-  const priority =
-    target === "male"
-      ? ["Google UK English Male", "Microsoft David", "Daniel", "Alex"]
-      : target === "female"
-      ? ["Google UK English Female", "Microsoft Zira", "Samantha", "Karen"]
-      : [];
+// ── Web Speech fallback ────────────────────────────────────────────────────────
+function getWebVoice(gender: "male" | "female" | "prefer-not-to-say"): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
+  const priority = gender === "male"
+    ? ["Google UK English Male", "Microsoft David", "Daniel", "Alex"]
+    : gender === "female"
+    ? ["Google UK English Female", "Microsoft Zira", "Samantha", "Karen"]
+    : [];
   for (const name of priority) {
     const found = voices.find((v) => v.name.toLowerCase().includes(name.toLowerCase()));
     if (found) return found;
   }
-  if (target) {
-    const fallback = voices.find((v) => v.name.toLowerCase().includes(target));
-    if (fallback) return fallback;
-  }
   return voices[0] || null;
 }
 
-// ── Safe speak — fixes Chrome freeze with watchdog timer ──────────────────────
-function safeSpeak(
+function speakWebSpeech(
   text: string,
-  voiceName: string | null,
   gender: "male" | "female" | "prefer-not-to-say",
   rate: number,
   onEnd: () => void
 ): () => void {
   let ended = false;
   let watchdog: NodeJS.Timeout;
-
-  const finish = () => {
-    if (ended) return;
-    ended = true;
-    clearTimeout(watchdog);
-    onEnd();
-  };
+  const finish = () => { if (ended) return; ended = true; clearTimeout(watchdog); onEnd(); };
 
   window.speechSynthesis.cancel();
-
-  // Small delay so cancel() settles before new utterance
   const tid = setTimeout(() => {
     const utter = new SpeechSynthesisUtterance(text);
     utter.rate = rate;
     utter.pitch = gender === "male" ? 0.85 : gender === "female" ? 1.1 : 1.0;
     utter.volume = 1;
-
-    const voices = getEnglishVoices();
-    if (voiceName) {
-      const found = voices.find((v) => v.name === voiceName);
-      if (found) utter.voice = found;
-    } else {
-      const def = getDefaultVoice(gender, voices);
-      if (def) utter.voice = def;
-    }
-
+    const voice = getWebVoice(gender);
+    if (voice) utter.voice = voice;
     utter.onend = finish;
     utter.onerror = finish;
-
-    // Watchdog — estimated duration + generous buffer
-    // Chrome sometimes never fires onend — this forces progress
     const estimatedMs = Math.max(3000, (text.length / 15) * (1 / rate) * 1000 + 3000);
-    watchdog = setTimeout(() => {
-      console.warn("speechSynthesis onend did not fire — forcing proceed");
-      finish();
-    }, estimatedMs);
-
-    // Chrome resume hack — Chrome pauses synthesis after ~15s
+    watchdog = setTimeout(() => { console.warn("Web Speech watchdog fired"); finish(); }, estimatedMs);
     const resumeInterval = setInterval(() => {
       if (ended) { clearInterval(resumeInterval); return; }
       if (window.speechSynthesis.paused) window.speechSynthesis.resume();
     }, 5000);
-
     window.speechSynthesis.speak(utter);
   }, 80);
 
-  // Return cancel function
-  return () => {
-    ended = true;
-    clearTimeout(tid);
-    clearTimeout(watchdog);
-    window.speechSynthesis.cancel();
-  };
+  return () => { ended = true; clearTimeout(tid); clearTimeout(watchdog); window.speechSynthesis.cancel(); };
 }
 
 // ── Setup Screen ───────────────────────────────────────────────────────────────
 function SetupScreen({
-  candidateName,
-  jobTitle,
-  companyName,
-  interviewType,
-  onStart,
+  candidateName, jobTitle, companyName, interviewType,
+  voiceTier, defaultVoiceId, onStart,
 }: {
-  candidateName: string;
-  jobTitle: string | null;
-  companyName: string | null;
-  interviewType: string;
+  candidateName: string; jobTitle: string | null; companyName: string | null;
+  interviewType: string; voiceTier: string; defaultVoiceId: string | null;
   onStart: (
     gender: "male" | "female" | "prefer-not-to-say",
-    dob: string,
-    paceValue: number,
-    voiceName: string | null
+    dob: string, paceValue: number, voiceId: string | null
   ) => void;
 }) {
-  const detected = detectGenderFromName(candidateName);
-  const [gender, setGender] = useState<"male" | "female" | "prefer-not-to-say">(
-    detected || "prefer-not-to-say"
-  );
+  const detected = detectGender(candidateName);
+  const [gender, setGender] = useState<"male" | "female" | "prefer-not-to-say">(detected || "prefer-not-to-say");
   const [dob, setDob] = useState("");
   const [dobError, setDobError] = useState("");
-
-  // Pace slider — 0 to 100, default 45 (just below Normal)
   const [paceValue, setPaceValue] = useState(45);
-  const pace = paceFromSlider(paceValue);
-
-  // Voice picker
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoiceName, setSelectedVoiceName] = useState<string | null>(null);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(defaultVoiceId);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const cancelPreviewRef = useRef<(() => void) | null>(null);
+  const pace = paceFromSlider(paceValue);
+  const isElevenLabs = voiceTier === "elevenlabs";
 
-  // Load voices
+  // Web Speech voices for fallback
+  const [webVoices, setWebVoices] = useState<SpeechSynthesisVoice[]>([]);
   useEffect(() => {
-    if (interviewType !== "VOICE") return;
-    const load = () => {
-      const v = getEnglishVoices();
-      setAvailableVoices(v);
-      if (!selectedVoiceName) {
-        const def = getDefaultVoice(gender, v);
-        if (def) setSelectedVoiceName(def.name);
-      }
-    };
+    if (isElevenLabs || interviewType !== "VOICE") return;
+    const load = () => setWebVoices(window.speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en")));
     load();
     window.speechSynthesis.onvoiceschanged = load;
     return () => { window.speechSynthesis.onvoiceschanged = null; };
-  }, [interviewType]);
+  }, [isElevenLabs, interviewType]);
 
-  // Update default voice when gender changes
+  // Update default voice when gender changes (ElevenLabs)
   useEffect(() => {
-    if (!availableVoices.length) return;
-    const def = getDefaultVoice(gender, availableVoices);
-    if (def) setSelectedVoiceName(def.name);
+    if (!isElevenLabs || !defaultVoiceId) return;
+    // Only update if they haven't manually picked one
+    if (selectedVoiceId === defaultVoiceId) {
+      const genderDefault = gender === "female" ? DEFAULT_FEMALE_VOICE_ID : DEFAULT_MALE_VOICE_ID;
+      setSelectedVoiceId(genderDefault);
+    }
   }, [gender]);
 
-  // Preview current pace + voice
-  const handlePreview = () => {
-    if (isPreviewing) {
-      cancelPreviewRef.current?.();
-      cancelPreviewRef.current = null;
-      setIsPreviewing(false);
-      return;
-    }
+  const handlePreview = async () => {
+    if (isPreviewing) { cancelPreviewRef.current?.(); cancelPreviewRef.current = null; setIsPreviewing(false); return; }
     setIsPreviewing(true);
-    const cancel = safeSpeak(
-      `Hello! I'm your AI interviewer. This is how I will sound and the pace I will use during your interview. You can continue adjusting until you're comfortable.`,
-      selectedVoiceName,
-      gender,
-      pace.speechRate,
-      () => { setIsPreviewing(false); cancelPreviewRef.current = null; }
-    );
-    cancelPreviewRef.current = cancel;
+    const text = `Hello! I'm your AI interviewer. This is how I will sound during your interview. Feel free to adjust the pace until you're comfortable.`;
+    if (isElevenLabs && selectedVoiceId) {
+      cancelPreviewRef.current = await speakElevenLabs(text, selectedVoiceId, () => { setIsPreviewing(false); cancelPreviewRef.current = null; });
+    } else {
+      cancelPreviewRef.current = speakWebSpeech(text, gender, pace.speechRate, () => { setIsPreviewing(false); cancelPreviewRef.current = null; });
+    }
   };
 
-  // Preview a specific voice
-  const handlePreviewVoice = (voiceName: string) => {
+  const handlePreviewVoice = async (voiceId: string) => {
     cancelPreviewRef.current?.();
-    safeSpeak("Hello! I'm your AI interviewer for today.", voiceName, gender, pace.speechRate, () => {});
+    if (isElevenLabs) {
+      await speakElevenLabs("Hello! I'm your AI interviewer for today.", voiceId, () => {});
+    }
   };
 
-  // Stop preview on unmount
   useEffect(() => () => { cancelPreviewRef.current?.(); }, []);
 
   const handleStart = () => {
@@ -271,50 +231,40 @@ function SetupScreen({
     const age = Math.floor((Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365));
     if (age < 16 || age > 100) { setDobError("Please enter a valid date of birth"); return; }
     cancelPreviewRef.current?.();
-    onStart(gender, dob, paceValue, selectedVoiceName);
+    onStart(gender, dob, paceValue, selectedVoiceId);
   };
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center p-6">
       <div className="w-full max-w-md space-y-5">
 
-        {/* Header */}
         <div className="text-center">
           <div className="w-16 h-16 rounded-2xl bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
             <MessageSquare className="w-8 h-8 text-purple-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-1">
-            Hi, {candidateName.split(" ")[0]}!
-          </h1>
+          <h1 className="text-2xl font-bold text-white mb-1">Hi, {candidateName.split(" ")[0]}!</h1>
           <p className="text-slate-400 text-sm">
-            {companyName} has invited you to a{" "}
-            {interviewType === "VOICE" ? "Voice Call" : "Text"} interview
+            {companyName} has invited you to a {interviewType === "VOICE" ? "Voice Call" : "Text"} interview
             {jobTitle ? ` for the ${jobTitle} position` : ""}.
           </p>
         </div>
 
-        {/* Interview type */}
-        <div className={`rounded-2xl border p-4 text-center ${
-          interviewType === "VOICE"
-            ? "border-violet-500/20 bg-violet-500/5"
-            : "border-indigo-500/20 bg-indigo-500/5"
-        }`}>
+        {/* Type info */}
+        <div className={`rounded-2xl border p-4 text-center ${interviewType === "VOICE" ? "border-violet-500/20 bg-violet-500/5" : "border-indigo-500/20 bg-indigo-500/5"}`}>
           {interviewType === "VOICE" ? (
             <>
               <Mic className="w-6 h-6 text-violet-400 mx-auto mb-2" />
               <p className="text-sm font-semibold text-white mb-1">Voice Interview</p>
-              <p className="text-xs text-slate-400">
-                AI will read each question aloud. Speak your answers clearly.
-                Allow microphone access when prompted.
-              </p>
+              <p className="text-xs text-slate-400">AI will read each question aloud. Speak your answers clearly.</p>
+              {isElevenLabs && (
+                <p className="text-xs text-violet-400 mt-1">✨ Human-like AI voice enabled</p>
+              )}
             </>
           ) : (
             <>
               <MessageSquare className="w-6 h-6 text-indigo-400 mx-auto mb-2" />
               <p className="text-sm font-semibold text-white mb-1">Text Interview</p>
-              <p className="text-xs text-slate-400">
-                Read each question and type your answer. Take your time — there's no timer.
-              </p>
+              <p className="text-xs text-slate-400">Read each question and type your answer. No timer.</p>
             </>
           )}
         </div>
@@ -324,36 +274,25 @@ function SetupScreen({
           <div className="flex items-center gap-2">
             <User className="w-4 h-4 text-slate-400" />
             <p className="text-sm font-semibold text-white">Your Gender</p>
-            {detected && (
-              <span className="text-[10px] text-slate-500 ml-auto">detected — change if incorrect</span>
-            )}
+            {detected && <span className="text-[10px] text-slate-500 ml-auto">detected — change if incorrect</span>}
           </div>
           <div className="grid grid-cols-3 gap-2">
             {(["male", "female", "prefer-not-to-say"] as const).map((g) => (
-              <button
-                key={g}
-                onClick={() => setGender(g)}
-                className={`py-2.5 rounded-xl text-xs font-medium transition border ${
-                  gender === g
-                    ? "bg-purple-600 border-purple-600 text-white"
-                    : "border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20"
-                }`}
-              >
+              <button key={g} onClick={() => setGender(g)} className={`py-2.5 rounded-xl text-xs font-medium transition border ${gender === g ? "bg-purple-600 border-purple-600 text-white" : "border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20"}`}>
                 {g === "prefer-not-to-say" ? "Prefer not to say" : g.charAt(0).toUpperCase() + g.slice(1)}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Date of birth */}
+        {/* DOB */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-3">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-slate-400" />
             <p className="text-sm font-semibold text-white">Date of Birth</p>
           </div>
           <input
-            type="date"
-            value={dob}
+            type="date" value={dob}
             onChange={(e) => { setDob(e.target.value); setDobError(""); }}
             max={new Date(Date.now() - 16 * 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}
             className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-2.5 text-sm text-white outline-none focus:border-purple-500/50 transition"
@@ -361,97 +300,70 @@ function SetupScreen({
           {dobError && <p className="text-xs text-red-400">{dobError}</p>}
         </div>
 
-        {/* ── VOICE ONLY: Pace Slider ── */}
+        {/* Pace Slider (voice only) */}
         {interviewType === "VOICE" && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-white">Interview Pace</p>
               <span className="text-xs font-semibold text-purple-400">{paceLabel(paceValue)}</span>
             </div>
-
-            {/* Smooth slider */}
             <div className="space-y-3">
-              <div className="relative">
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={paceValue}
-                  onChange={(e) => setPaceValue(parseInt(e.target.value))}
-                  className="w-full h-2 rounded-full appearance-none cursor-pointer bg-white/10"
-                  style={{ accentColor: "#9333ea" }}
-                />
-                <div className="flex justify-between mt-1.5">
-                  <span className="text-[10px] text-slate-600">🐢 Slow</span>
-                  <span className="text-[10px] text-slate-600">🏃 Fast</span>
-                </div>
+              <input
+                type="range" min={0} max={100} step={1} value={paceValue}
+                onChange={(e) => setPaceValue(parseInt(e.target.value))}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                style={{ accentColor: "#9333ea" }}
+              />
+              <div className="flex justify-between">
+                <span className="text-[10px] text-slate-600">🐢 Very Slow</span>
+                <span className="text-[10px] text-slate-600">🏃 Very Fast</span>
               </div>
-
-              {/* Live stats — update as slider moves */}
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2.5 text-center">
-                  <p className="text-[10px] text-slate-500 mb-0.5">Wait before repeat</p>
+                  <p className="text-[10px] text-slate-500 mb-0.5">Repeat after</p>
                   <p className="text-sm font-bold text-white">{(pace.silenceRepeat / 1000).toFixed(1)}s</p>
                 </div>
                 <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2.5 text-center">
-                  <p className="text-[10px] text-slate-500 mb-0.5">Wait before skip</p>
-                  <p className="text-sm font-bold text-white">{(pace.silenceSkip / 1000).toFixed(1)}s</p>
+                  <p className="text-[10px] text-slate-500 mb-0.5">Skip after</p>
+                  <p className="text-sm font-bold text-white">{((pace.silenceRepeat + pace.silenceSkip) / 1000).toFixed(0)}s</p>
                 </div>
                 <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2.5 text-center">
-                  <p className="text-[10px] text-slate-500 mb-0.5">AI speech</p>
+                  <p className="text-[10px] text-slate-500 mb-0.5">AI speed</p>
                   <p className="text-sm font-bold text-white">{pace.speechRate}×</p>
                 </div>
               </div>
-
-              {/* Preview button */}
-              <button
-                onClick={handlePreview}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition border ${
-                  isPreviewing
-                    ? "bg-purple-600 border-purple-600 text-white"
-                    : "border-white/10 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
-                }`}
-              >
-                {isPreviewing ? (
-                  <><Square className="w-3 h-3" />Stop preview</>
-                ) : (
-                  <><Play className="w-3 h-3" />Preview this pace + voice</>
-                )}
+              <button onClick={handlePreview} className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition border ${isPreviewing ? "bg-purple-600 border-purple-600 text-white" : "border-white/10 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"}`}>
+                {isPreviewing ? <><Square className="w-3 h-3" />Stop preview</> : <><Play className="w-3 h-3" />Preview pace + voice</>}
               </button>
-              <p className="text-[10px] text-slate-600">
-                Drag the slider, then hit preview to hear how the interview will feel.
-              </p>
+              <p className="text-[10px] text-slate-600">Drag the slider, then hit preview to hear how it feels.</p>
             </div>
           </div>
         )}
 
-        {/* ── VOICE ONLY: Voice Picker ── */}
-        {interviewType === "VOICE" && availableVoices.length > 0 && (
+        {/* Voice Picker — ElevenLabs (voice only, Business+) */}
+        {interviewType === "VOICE" && isElevenLabs && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-white">AI Voice</p>
-              <span className="text-[10px] text-slate-500">▶ to preview each</span>
+              <div>
+                <p className="text-sm font-semibold text-white">AI Voice</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Your recruiter set a default. You can change it.</p>
+              </div>
+              <span className="text-[10px] text-slate-500">▶ to preview</span>
             </div>
-            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {availableVoices.map((v) => (
+            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+              {ELEVENLABS_VOICES.map((v) => (
                 <div
-                  key={v.name}
-                  onClick={() => setSelectedVoiceName(v.name)}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition border cursor-pointer ${
-                    selectedVoiceName === v.name
-                      ? "bg-purple-600 border-purple-600 text-white"
-                      : "border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:text-white"
-                  }`}
+                  key={v.id}
+                  onClick={() => setSelectedVoiceId(v.id)}
+                  className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition border cursor-pointer ${selectedVoiceId === v.id ? "bg-purple-600 border-purple-600 text-white" : "border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20 hover:text-white"}`}
                 >
-                  <span className="truncate flex-1">{v.name}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium">{v.name}</p>
+                    <p className={`text-[10px] truncate ${selectedVoiceId === v.id ? "text-purple-200" : "text-slate-600"}`}>{v.desc}</p>
+                  </div>
                   <button
-                    onClick={(e) => { e.stopPropagation(); handlePreviewVoice(v.name); }}
-                    className={`ml-3 p-1.5 rounded-lg shrink-0 transition ${
-                      selectedVoiceName === v.name
-                        ? "hover:bg-white/20 text-white"
-                        : "hover:bg-white/10 text-slate-500 hover:text-white"
-                    }`}
+                    onClick={(e) => { e.stopPropagation(); handlePreviewVoice(v.id); }}
+                    className={`ml-3 p-1.5 rounded-lg shrink-0 transition ${selectedVoiceId === v.id ? "hover:bg-white/20 text-white" : "hover:bg-white/10 text-slate-500 hover:text-white"}`}
                   >
                     <Play className="w-3 h-3" />
                   </button>
@@ -461,7 +373,7 @@ function SetupScreen({
           </div>
         )}
 
-        {/* Tips */}
+        {/* Tips (voice only) */}
         {interviewType === "VOICE" && (
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 space-y-1.5">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Tips</p>
@@ -470,7 +382,7 @@ function SetupScreen({
               "Speak clearly into your microphone",
               `Silent for ${(pace.silenceRepeat / 1000).toFixed(0)}s → AI repeats the question`,
               `Silent for ${((pace.silenceRepeat + pace.silenceSkip) / 1000).toFixed(0)}s total → question skipped`,
-              "You can skip any question manually",
+              "AI may ask a follow-up if your answer is interesting — answer naturally",
             ].map((tip) => (
               <p key={tip} className="text-xs text-slate-500 flex items-start gap-2">
                 <span className="text-purple-400 mt-0.5 shrink-0">•</span>{tip}
@@ -479,10 +391,7 @@ function SetupScreen({
           </div>
         )}
 
-        <button
-          onClick={handleStart}
-          className="w-full py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-sm transition flex items-center justify-center gap-2"
-        >
+        <button onClick={handleStart} className="w-full py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-sm transition flex items-center justify-center gap-2">
           Begin Interview <ChevronRight className="w-4 h-4" />
         </button>
 
@@ -494,16 +403,20 @@ function SetupScreen({
   );
 }
 
-// ── Voice Call UI ──────────────────────────────────────────────────────────────
+// ── Voice Call Screen ──────────────────────────────────────────────────────────
 function VoiceCallScreen({
   interview, currentIndex, isAISpeaking, isListening, transcript,
   silencePhase, onConfirm, onReRecord, onSkip, confirming, phase, liveJoined,
+  isFollowUp, followUpQuestion,
 }: {
   interview: any; currentIndex: number; isAISpeaking: boolean; isListening: boolean;
   transcript: string; silencePhase: "none" | "warn" | "skip"; onConfirm: () => void;
-  onReRecord: () => void; onSkip: () => void; confirming: boolean; phase: string; liveJoined: boolean;
+  onReRecord: () => void; onSkip: () => void; confirming: boolean; phase: string;
+  liveJoined: boolean; isFollowUp: boolean; followUpQuestion: string | null;
 }) {
-  const question = interview.questions[currentIndex];
+  const question = isFollowUp && followUpQuestion
+    ? { question: followUpQuestion, order: currentIndex + 1 }
+    : interview.questions[currentIndex];
   const answeredCount = interview.questions.filter((q: any) => q.answered || q.skipped).length;
   const progress = Math.round((answeredCount / interview.totalQuestions) * 100);
 
@@ -518,11 +431,9 @@ function VoiceCallScreen({
             <span className="absolute inset-0 rounded-full border-2 border-purple-500/40 animate-ping" />
             <span className="absolute inset-[-8px] rounded-full border border-purple-500/20 animate-ping" style={{ animationDelay: "0.4s" }} />
           </div>
-          <p className="text-slate-400 text-sm">
-            {phase === "opening" ? "Your interview is starting..." : "Wrapping up..."}
-          </p>
+          <p className="text-slate-400 text-sm">{phase === "opening" ? "Your interview is starting..." : "Wrapping up..."}</p>
           <div className="flex items-center justify-center gap-1.5">
-            {[0, 1, 2, 3, 4].map((i) => (
+            {[0,1,2,3,4].map((i) => (
               <div key={i} className="w-1 bg-purple-400 rounded-full animate-bounce" style={{ height: "14px", animationDelay: `${i * 0.1}s` }} />
             ))}
           </div>
@@ -539,14 +450,11 @@ function VoiceCallScreen({
           <div>
             <h2 className="text-2xl font-bold text-white mb-2">Interview Complete!</h2>
             <p className="text-slate-400 text-sm">
-              Thank you, {interview.candidateName.split(" ")[0]}. Your responses have been recorded.
-              The team will review them and be in touch soon.
+              Thank you, {interview.candidateName.split(" ")[0]}. Your responses have been recorded. The team will be in touch soon.
             </p>
           </div>
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-            <p className="text-sm text-emerald-400 font-medium">
-              {answeredCount} of {interview.totalQuestions} questions answered
-            </p>
+            <p className="text-sm text-emerald-400 font-medium">{answeredCount} of {interview.totalQuestions} questions answered</p>
           </div>
         </div>
       </div>
@@ -575,22 +483,13 @@ function VoiceCallScreen({
         {liveJoined && (
           <div className="w-full rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 text-center">
             <p className="text-sm font-semibold text-blue-400">👤 Your interviewer has joined</p>
-            <p className="text-xs text-slate-400 mt-1">A human interviewer has taken over. Continue as normal.</p>
           </div>
         )}
 
         {/* AI orb */}
         <div className="relative">
-          <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 ${
-            isAISpeaking ? "bg-purple-500/30" : isListening ? "bg-indigo-500/20" : "bg-white/5"
-          }`}>
-            {isAISpeaking ? (
-              <Volume2 className="w-12 h-12 text-purple-400" />
-            ) : isListening ? (
-              <Mic className="w-12 h-12 text-indigo-400" />
-            ) : (
-              <VolumeX className="w-12 h-12 text-slate-600" />
-            )}
+          <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 ${isAISpeaking ? "bg-purple-500/30" : isListening ? "bg-indigo-500/20" : "bg-white/5"}`}>
+            {isAISpeaking ? <Volume2 className="w-12 h-12 text-purple-400" /> : isListening ? <Mic className="w-12 h-12 text-indigo-400" /> : <VolumeX className="w-12 h-12 text-slate-600" />}
           </div>
           {(isAISpeaking || isListening) && (
             <>
@@ -606,9 +505,7 @@ function VoiceCallScreen({
             <>
               <p className="text-purple-400 font-semibold text-sm">AI is speaking...</p>
               <div className="flex items-center justify-center gap-1">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <div key={i} className="w-1 bg-purple-400 rounded-full animate-bounce" style={{ height: "12px", animationDelay: `${i * 0.1}s` }} />
-                ))}
+                {[0,1,2,3,4].map((i) => <div key={i} className="w-1 bg-purple-400 rounded-full animate-bounce" style={{ height: "12px", animationDelay: `${i * 0.1}s` }} />)}
               </div>
             </>
           )}
@@ -619,22 +516,28 @@ function VoiceCallScreen({
               {silencePhase === "skip" && <p className="text-red-400 text-xs animate-pulse">No response — skipping soon...</p>}
             </>
           )}
-          {!isAISpeaking && !isListening && !transcript && (
-            <p className="text-slate-500 text-sm">Preparing next question...</p>
-          )}
+          {!isAISpeaking && !isListening && !transcript && <p className="text-slate-500 text-sm">Preparing...</p>}
         </div>
 
         {/* Question card */}
         {question && (
-          <div className="w-full rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">
-              Question {currentIndex + 1} of {interview.totalQuestions}
-            </p>
+          <div className={`w-full rounded-2xl border p-6 ${isFollowUp ? "border-indigo-500/30 bg-indigo-500/5" : "border-white/10 bg-white/[0.02]"}`}>
+            {isFollowUp && (
+              <div className="flex items-center gap-1.5 mb-3">
+                <CornerDownRight className="w-3.5 h-3.5 text-indigo-400" />
+                <p className="text-xs text-indigo-400 font-medium uppercase tracking-wider">Follow-up</p>
+              </div>
+            )}
+            {!isFollowUp && (
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">
+                Question {currentIndex + 1} of {interview.totalQuestions}
+              </p>
+            )}
             <p className="text-white text-base font-medium leading-relaxed">{question.question}</p>
           </div>
         )}
 
-        {/* Transcript + confirm/re-record */}
+        {/* Transcript */}
         {transcript && !isAISpeaking && (
           <div className="w-full space-y-3">
             <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-5">
@@ -646,14 +549,14 @@ function VoiceCallScreen({
                 <RotateCcw className="w-4 h-4" /> Re-record
               </button>
               <button onClick={onConfirm} disabled={confirming} className="flex-1 inline-flex items-center justify-center gap-2 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold transition disabled:opacity-50">
-                {confirming ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting...</> : <><Send className="w-4 h-4" />Confirm Answer</>}
+                {confirming ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting...</> : <><Send className="w-4 h-4" />Confirm</>}
               </button>
             </div>
           </div>
         )}
 
         {/* Skip */}
-        {isListening && !transcript && (
+        {isListening && !transcript && !isFollowUp && (
           <button onClick={onSkip} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-slate-400 text-xs font-medium hover:text-white transition">
             <SkipForward className="w-3.5 h-3.5" /> Skip this question
           </button>
@@ -661,13 +564,8 @@ function VoiceCallScreen({
 
         {/* Progress dots */}
         <div className="flex flex-wrap gap-2 justify-center">
-          {interview.questions.map((q: any, i: number) => (
-            <div key={q.id} className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-              q.answered ? "bg-emerald-500/20 text-emerald-400"
-              : q.skipped ? "bg-slate-500/20 text-slate-500"
-              : i === currentIndex ? "bg-purple-500/20 text-purple-400 ring-2 ring-purple-500/40"
-              : "bg-white/5 text-slate-600"
-            }`}>
+          {interview.questions.filter((q: any) => !q.isFollowUp).map((q: any, i: number) => (
+            <div key={q.id} className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${q.answered ? "bg-emerald-500/20 text-emerald-400" : q.skipped ? "bg-slate-500/20 text-slate-500" : i === currentIndex ? "bg-purple-500/20 text-purple-400 ring-2 ring-purple-500/40" : "bg-white/5 text-slate-600"}`}>
               {q.answered ? "✓" : q.skipped ? "—" : i + 1}
             </div>
           ))}
@@ -677,14 +575,19 @@ function VoiceCallScreen({
   );
 }
 
-// ── Text Interview UI ──────────────────────────────────────────────────────────
+// ── Text Interview Screen ──────────────────────────────────────────────────────
 function TextInterviewScreen({
   interview, currentIndex, answer, setAnswer, onSubmit, submitting,
   onNext, justAnswered, setCurrentIndex, setJustAnswered, phase,
+  pendingFollowUp, onAnswerFollowUp, followUpAnswer, setFollowUpAnswer,
+  submittingFollowUp, followUpJustAnswered, onNextAfterFollowUp,
 }: {
   interview: any; currentIndex: number; answer: string; setAnswer: (v: string) => void;
   onSubmit: () => void; submitting: boolean; onNext: () => void; justAnswered: boolean;
   setCurrentIndex: (i: number) => void; setJustAnswered: (v: boolean) => void; phase: string;
+  pendingFollowUp: any | null; onAnswerFollowUp: () => void; followUpAnswer: string;
+  setFollowUpAnswer: (v: string) => void; submittingFollowUp: boolean;
+  followUpJustAnswered: boolean; onNextAfterFollowUp: () => void;
 }) {
   const answeredCount = interview.questions.filter((q: any) => q.answered).length;
   const progress = Math.round((answeredCount / interview.totalQuestions) * 100);
@@ -705,9 +608,7 @@ function TextInterviewScreen({
           <CheckCircle className="w-20 h-20 text-emerald-400 mx-auto" />
           <div>
             <h2 className="text-2xl font-bold text-white mb-2">Interview Complete! 🎉</h2>
-            <p className="text-slate-400 text-sm">
-              Thank you, {interview.candidateName.split(" ")[0]}. The team will review your responses and be in touch soon.
-            </p>
+            <p className="text-slate-400 text-sm">Thank you, {interview.candidateName.split(" ")[0]}. The team will review your responses and be in touch soon.</p>
           </div>
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
             <p className="text-sm text-emerald-400 font-medium">{answeredCount} of {interview.totalQuestions} questions answered</p>
@@ -735,7 +636,7 @@ function TextInterviewScreen({
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
+      <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
         <div className="text-center">
           <div className="w-16 h-16 rounded-2xl bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
             <MessageSquare className="w-8 h-8 text-purple-400" />
@@ -745,65 +646,111 @@ function TextInterviewScreen({
         </div>
 
         {currentQuestion && !currentQuestion.answered && (
-          <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-8 space-y-6">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                {labels[currentQuestion.questionType] || currentQuestion.questionType}
-              </span>
-              <span className="text-xs text-slate-600">Question {currentIndex + 1} of {interview.totalQuestions}</span>
-            </div>
-            <p className="text-white text-lg font-medium leading-relaxed">{currentQuestion.question}</p>
+          <div className="space-y-4">
+            {/* Main question */}
+            <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  {labels[currentQuestion.questionType] || currentQuestion.questionType}
+                </span>
+                <span className="text-xs text-slate-600">Question {currentIndex + 1} of {interview.questions.filter((q:any) => !q.isFollowUp).length}</span>
+              </div>
+              <p className="text-white text-lg font-medium leading-relaxed">{currentQuestion.question}</p>
 
-            {justAnswered ? (
+              {/* Show answer box only if no follow-up pending */}
+              {!justAnswered && !pendingFollowUp && !followUpJustAnswered && (
+                <div className="space-y-4">
+                  <textarea
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    placeholder="Type your answer here..."
+                    rows={6}
+                    className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 resize-none transition text-sm"
+                  />
+                  <button
+                    onClick={onSubmit}
+                    disabled={submitting || !answer.trim()}
+                    className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition disabled:opacity-50"
+                  >
+                    {submitting ? <><Loader2 className="w-4 h-4 animate-spin" />Checking...</> : <><Send className="w-4 h-4" />Submit Answer</>}
+                  </button>
+                </div>
+              )}
+
+              {/* Answer submitted — checking for follow-up */}
+              {justAnswered && !pendingFollowUp && !followUpJustAnswered && (
+                <div className="flex items-center gap-3 p-4 rounded-2xl border border-purple-500/20 bg-purple-500/5">
+                  <Loader2 className="w-5 h-5 text-purple-400 animate-spin shrink-0" />
+                  <p className="text-sm text-purple-300">Processing your answer...</p>
+                </div>
+              )}
+            </div>
+
+            {/* ── Follow-up question (nested) ── */}
+            {pendingFollowUp && !followUpJustAnswered && (
+              <div className="rounded-3xl border border-indigo-500/30 bg-indigo-500/5 p-8 space-y-6 ml-4 relative">
+                <div className="absolute -left-4 top-8 w-4 h-0.5 bg-indigo-500/30" />
+                <div className="flex items-center gap-2">
+                  <CornerDownRight className="w-4 h-4 text-indigo-400" />
+                  <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Follow-up</span>
+                </div>
+                <p className="text-white text-base font-medium leading-relaxed">{pendingFollowUp.question}</p>
+                <div className="space-y-4">
+                  <textarea
+                    value={followUpAnswer}
+                    onChange={(e) => setFollowUpAnswer(e.target.value)}
+                    placeholder="Type your answer here..."
+                    rows={5}
+                    className="w-full rounded-xl border border-indigo-500/20 bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-indigo-500/50 resize-none transition text-sm"
+                  />
+                  <button
+                    onClick={onAnswerFollowUp}
+                    disabled={submittingFollowUp || !followUpAnswer.trim()}
+                    className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 transition disabled:opacity-50"
+                  >
+                    {submittingFollowUp ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting...</> : <><Send className="w-4 h-4" />Submit Answer</>}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Follow-up answered — move to next */}
+            {followUpJustAnswered && (
               <div className="space-y-4">
-                <div className="text-center p-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5">
-                  <CheckCircle className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
-                  <p className="text-emerald-400 font-semibold">Answer received!</p>
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 text-center">
+                  <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                  <p className="text-emerald-400 font-semibold">Great answer!</p>
                   <p className="text-slate-400 text-sm mt-1">Moving to the next question.</p>
                 </div>
-                <button onClick={onNext} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition">
+                <button onClick={onNextAfterFollowUp} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition">
                   Next Question <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
-            ) : (
+            )}
+
+            {/* No follow-up — direct next */}
+            {justAnswered && !pendingFollowUp && followUpJustAnswered === false && answer === "" && (
               <div className="space-y-4">
-                <textarea
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  placeholder="Type your answer here..."
-                  rows={6}
-                  className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 resize-none transition text-sm"
-                />
-                <button
-                  onClick={onSubmit}
-                  disabled={submitting || !answer.trim()}
-                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition disabled:opacity-50"
-                >
-                  {submitting ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting...</> : <><Send className="w-4 h-4" />Submit Answer</>}
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 text-center">
+                  <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                  <p className="text-emerald-400 font-semibold">Answer received!</p>
+                </div>
+                <button onClick={onNext} className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition">
+                  Next Question <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             )}
           </div>
         )}
 
+        {/* Question list */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
           <p className="text-xs font-semibold text-white uppercase tracking-wider mb-4">All Questions</p>
           <div className="space-y-2">
-            {interview.questions.map((q: any, i: number) => (
-              <div
-                key={q.id}
-                onClick={() => { if (!q.answered) { setCurrentIndex(i); setJustAnswered(false); } }}
-                className={`flex items-center gap-3 p-3 rounded-xl transition cursor-pointer ${
-                  i === currentIndex && !q.answered ? "bg-purple-500/10 border border-purple-500/20"
-                  : q.answered ? "bg-emerald-500/5 border border-emerald-500/10"
-                  : "bg-white/[0.02] border border-white/5 hover:bg-white/5"
-                }`}
-              >
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-                  q.answered ? "bg-emerald-500/20 text-emerald-400"
-                  : i === currentIndex ? "bg-purple-500/20 text-purple-400"
-                  : "bg-white/5 text-slate-500"
-                }`}>
+            {interview.questions.filter((q: any) => !q.isFollowUp).map((q: any, i: number) => (
+              <div key={q.id} onClick={() => { if (!q.answered) { setCurrentIndex(i); setJustAnswered(false); } }}
+                className={`flex items-center gap-3 p-3 rounded-xl transition cursor-pointer ${i === currentIndex && !q.answered ? "bg-purple-500/10 border border-purple-500/20" : q.answered ? "bg-emerald-500/5 border border-emerald-500/10" : "bg-white/[0.02] border border-white/5 hover:bg-white/5"}`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${q.answered ? "bg-emerald-500/20 text-emerald-400" : i === currentIndex ? "bg-purple-500/20 text-purple-400" : "bg-white/5 text-slate-500"}`}>
                   {q.answered ? "✓" : i + 1}
                 </div>
                 <p className="text-sm text-slate-300 truncate flex-1">{q.question}</p>
@@ -824,13 +771,12 @@ function InterviewSession() {
   const [interview, setInterview] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
   const [setupDone, setSetupDone] = useState(false);
   const [gender, setGender] = useState<"male" | "female" | "prefer-not-to-say">("prefer-not-to-say");
-
   const [phase, setPhase] = useState<"opening" | "interview" | "closing" | "complete">("opening");
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // Voice state
   const [isAISpeaking, setIsAISpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -838,11 +784,24 @@ function InterviewSession() {
   const [confirming, setConfirming] = useState(false);
   const [liveJoined, setLiveJoined] = useState(false);
 
+  // Follow-up state (voice)
+  const [isFollowUp, setIsFollowUp] = useState(false);
+  const [followUpQuestion, setFollowUpQuestion] = useState<string | null>(null);
+  const [followUpQuestionId, setFollowUpQuestionId] = useState<string | null>(null);
+  const [checkingFollowUp, setCheckingFollowUp] = useState(false);
+
+  // Follow-up state (text)
+  const [pendingFollowUp, setPendingFollowUp] = useState<any | null>(null);
+  const [followUpAnswer, setFollowUpAnswer] = useState("");
+  const [submittingFollowUp, setSubmittingFollowUp] = useState(false);
+  const [followUpJustAnswered, setFollowUpJustAnswered] = useState(false);
+
+  // Text state
   const [textAnswer, setTextAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [justAnswered, setJustAnswered] = useState(false);
 
-  // Stable refs
+  // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -856,18 +815,25 @@ function InterviewSession() {
   const isRepeatingRef = useRef(false);
   const cancelSpeakRef = useRef<(() => void) | null>(null);
 
-  // Settings refs — avoid stale closures
+  // Settings refs
   const genderRef = useRef(gender);
   const speechRateRef = useRef(0.92);
-  const selectedVoiceNameRef = useRef<string | null>(null);
+  const voiceIdRef = useRef<string | null>(null);
+  const voiceTierRef = useRef<string>("web-speech");
   const silenceRepeatMsRef = useRef(3000);
   const silenceSkipMsRef = useRef(5000);
   const interviewRef = useRef<any>(null);
   const currentIndexRef = useRef(0);
+  const isFollowUpRef = useRef(false);
+  const followUpQuestionRef = useRef<string | null>(null);
+  const followUpQuestionIdRef = useRef<string | null>(null);
 
   useEffect(() => { genderRef.current = gender; }, [gender]);
   useEffect(() => { interviewRef.current = interview; }, [interview]);
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+  useEffect(() => { isFollowUpRef.current = isFollowUp; }, [isFollowUp]);
+  useEffect(() => { followUpQuestionRef.current = followUpQuestion; }, [followUpQuestion]);
+  useEffect(() => { followUpQuestionIdRef.current = followUpQuestionId; }, [followUpQuestionId]);
 
   // ── Load interview ──
   useEffect(() => {
@@ -878,7 +844,10 @@ function InterviewSession() {
         if (!res.ok) { setError(data.error || "Interview not found"); return; }
         setInterview(data.interview);
         interviewRef.current = data.interview;
-        const first = data.interview.questions.findIndex((q: any) => !q.answered && !q.skipped);
+        voiceIdRef.current = data.interview.voiceId || null;
+        voiceTierRef.current = data.interview.voiceTier || "web-speech";
+        const mainQuestions = data.interview.questions.filter((q: any) => !q.isFollowUp);
+        const first = mainQuestions.findIndex((q: any) => !q.answered && !q.skipped);
         const idx = first === -1 ? 0 : first;
         setCurrentIndex(idx);
         currentIndexRef.current = idx;
@@ -891,7 +860,7 @@ function InterviewSession() {
     load();
   }, [token]);
 
-  // ── Poll for live takeover ──
+  // ── Poll for live ──
   useEffect(() => {
     if (!setupDone || !interview || interview.mode !== "ASYNC") return;
     pollRef.current = setInterval(async () => {
@@ -902,9 +871,7 @@ function InterviewSession() {
         if (data.interview.isLive && !liveJoined) {
           setLiveJoined(true);
           stopListening();
-          const msg = data.interview.liveMessage
-            ? `Your interviewer has joined. ${data.interview.liveMessage}`
-            : "Your interviewer has joined and will continue the interview.";
+          const msg = data.interview.liveMessage || "Your interviewer has joined and will continue the interview.";
           doSpeak(msg, () => {});
         }
       } catch {}
@@ -943,18 +910,23 @@ function InterviewSession() {
     });
   };
 
-  // ── Speak ──
+  // ── Speak — uses ElevenLabs or Web Speech based on tier ──
   const doSpeak = useCallback((text: string, onEnd: () => void) => {
     cancelSpeakRef.current?.();
     setIsAISpeaking(true);
-    const cancel = safeSpeak(
-      text,
-      selectedVoiceNameRef.current,
-      genderRef.current,
-      speechRateRef.current,
-      () => { setIsAISpeaking(false); onEnd(); }
-    );
-    cancelSpeakRef.current = cancel;
+
+    const finish = () => { setIsAISpeaking(false); onEnd(); };
+
+    if (voiceTierRef.current === "elevenlabs" && voiceIdRef.current) {
+      speakElevenLabs(text, voiceIdRef.current, finish).then((cancel) => {
+        cancelSpeakRef.current = cancel;
+      }).catch(() => {
+        // Fallback to Web Speech
+        cancelSpeakRef.current = speakWebSpeech(text, genderRef.current, speechRateRef.current, finish);
+      });
+    } else {
+      cancelSpeakRef.current = speakWebSpeech(text, genderRef.current, speechRateRef.current, finish);
+    }
   }, []);
 
   // ── Stop silence detection ──
@@ -977,13 +949,47 @@ function InterviewSession() {
     setIsListening(false);
   }, [stopSilenceDetection]);
 
+  // ── Check for follow-up (voice mode) ──
+  const checkFollowUp = useCallback(async (questionId: string, answer: string): Promise<boolean> => {
+    const iv = interviewRef.current;
+    if (!iv?.allowFollowUps) return false;
+    setCheckingFollowUp(true);
+    try {
+      const res = await fetch(`/api/recruiter/interviews/${iv.id}/follow-up`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId, answer, shareToken: token }),
+      });
+      const data = await res.json();
+      if (data.shouldAsk && data.followUpQuestion) {
+        setFollowUpQuestion(data.followUpQuestion.question);
+        setFollowUpQuestionId(data.followUpQuestion.id);
+        followUpQuestionRef.current = data.followUpQuestion.question;
+        followUpQuestionIdRef.current = data.followUpQuestion.id;
+
+        // Update local interview state with new follow-up question
+        setInterview((prev: any) => ({
+          ...prev,
+          allowFollowUps: data.followUpQuestion ? prev.allowFollowUps : false,
+          totalQuestions: prev.totalQuestions + 1,
+          questions: [...prev.questions, { ...data.followUpQuestion, answered: false, skipped: false }],
+        }));
+
+        return true;
+      }
+      return false;
+    } catch { return false; }
+    finally { setCheckingFollowUp(false); }
+  }, [token]);
+
   // ── Skip question ──
   const handleSkipQuestion = useCallback(async () => {
     stopListening();
     if (repeatTimerRef.current) { clearTimeout(repeatTimerRef.current); repeatTimerRef.current = null; }
     const iv = interviewRef.current;
     const idx = currentIndexRef.current;
-    const q = iv?.questions[idx];
+    const mainQuestions = iv?.questions?.filter((q: any) => !q.isFollowUp) || [];
+    const q = mainQuestions[idx];
     if (!q) return;
     try {
       await fetch(`/api/recruiter/interviews/${iv.id}/answer`, {
@@ -1012,11 +1018,9 @@ function InterviewSession() {
       silenceStartRef.current = null;
       isRepeatingRef.current = false;
       setSilencePhase("none");
-
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
       const check = () => {
-        // Stop if repeating or context closed
         if (isRepeatingRef.current || !analyserRef.current) return;
         analyserRef.current.getByteFrequencyData(dataArray);
         const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
@@ -1028,30 +1032,21 @@ function InterviewSession() {
           const skipMs = silenceSkipMsRef.current;
 
           if (elapsed >= repeatMs + skipMs) {
-            // Total silence → skip
-            if (!isRepeatingRef.current) {
-              isRepeatingRef.current = true;
-              handleSkipQuestion();
-            }
+            if (!isRepeatingRef.current) { isRepeatingRef.current = true; handleSkipQuestion(); }
             return;
           } else if (elapsed >= repeatMs && !isRepeatingRef.current) {
-            // Repeat once
             isRepeatingRef.current = true;
             silenceStartRef.current = null;
             setSilencePhase("warn");
             stopListening();
-
-            const q = interviewRef.current?.questions[currentIndexRef.current];
-            if (!q) return;
-
+            const currentQ = isFollowUpRef.current && followUpQuestionRef.current
+              ? followUpQuestionRef.current
+              : interviewRef.current?.questions?.filter((q: any) => !q.isFollowUp)[currentIndexRef.current]?.question;
+            if (!currentQ) return;
             doSpeak(
-              `Let me repeat that. ${q.question}. I'll move on if I don't receive a response.`,
+              `Let me repeat that. ${currentQ}. I'll move on if I don't receive a response.`,
               () => {
-                // After repeat: start skip countdown
-                repeatTimerRef.current = setTimeout(() => {
-                  handleSkipQuestion();
-                }, skipMs);
-                // Resume listening
+                repeatTimerRef.current = setTimeout(() => { handleSkipQuestion(); }, skipMs);
                 isRepeatingRef.current = false;
                 startListeningForAnswer();
               }
@@ -1062,10 +1057,8 @@ function InterviewSession() {
           silenceStartRef.current = null;
           setSilencePhase("none");
         }
-
         silenceTimerRef.current = setTimeout(check, 200);
       };
-
       silenceTimerRef.current = setTimeout(check, 200);
     } catch (err) { console.warn("Silence detection not available:", err); }
   }, [doSpeak, stopListening, handleSkipQuestion]);
@@ -1074,14 +1067,11 @@ function InterviewSession() {
   const startListeningForAnswer = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
-
     const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
-
     let finalTranscript = "";
-
     recognition.onresult = (event: any) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + " ";
@@ -1090,22 +1080,16 @@ function InterviewSession() {
       silenceStartRef.current = null;
       setSilencePhase("none");
     };
-
     recognition.onerror = () => setIsListening(false);
     recognition.onend = () => setIsListening(false);
-
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
     setTranscript("");
-
-    // Use shared recording stream for silence detection
     if (audioStreamRef.current?.active) {
       startSilenceDetection(audioStreamRef.current);
     } else {
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then((s) => { startSilenceDetection(s); })
-        .catch(() => {});
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => { startSilenceDetection(s); }).catch(() => {});
     }
   }, [startSilenceDetection]);
 
@@ -1124,7 +1108,7 @@ function InterviewSession() {
       setInterview((prev: any) => ({
         ...prev,
         answeredQuestions: prev.answeredQuestions + 1,
-        questions: prev.questions.map((q: any, i: number) => i === idx ? { ...q, answered: true } : q),
+        questions: prev.questions.map((q: any) => q.id === questionId ? { ...q, answered: true } : q),
       }));
       return true;
     } catch { return false; }
@@ -1137,7 +1121,6 @@ function InterviewSession() {
     const iv = interviewRef.current;
     const closingMsg = iv?.closing?.message
       || `That's all for today, ${iv?.candidateName?.split(" ")[0] || ""}. Thank you for your time. The team will review your responses and be in touch soon. Good luck!`;
-
     if (iv?.interviewType === "VOICE") {
       doSpeak(closingMsg, async () => { await stopAndUploadRecording(iv.id); setPhase("complete"); });
     } else {
@@ -1152,7 +1135,16 @@ function InterviewSession() {
     const idx = currentIndexRef.current;
     if (!iv) return;
 
-    const nextIndex = iv.questions.findIndex((q: any, i: number) => i > idx && !q.answered && !q.skipped);
+    // Reset follow-up state
+    setIsFollowUp(false);
+    setFollowUpQuestion(null);
+    setFollowUpQuestionId(null);
+    isFollowUpRef.current = false;
+    followUpQuestionRef.current = null;
+    followUpQuestionIdRef.current = null;
+
+    const mainQuestions = iv.questions.filter((q: any) => !q.isFollowUp);
+    const nextIndex = mainQuestions.findIndex((q: any, i: number) => i > idx && !q.answered && !q.skipped);
 
     if (nextIndex === -1) {
       endInterview();
@@ -1162,7 +1154,7 @@ function InterviewSession() {
       setTranscript("");
 
       if (iv.interviewType === "VOICE") {
-        const nextQ = iv.questions[nextIndex];
+        const nextQ = mainQuestions[nextIndex];
         const instruction = iv.instructions?.find(
           (ins: any) =>
             (ins.trigger === "before_question" && ins.questionIndex === nextIndex) ||
@@ -1174,40 +1166,138 @@ function InterviewSession() {
     }
   }, [doSpeak, startListeningForAnswer, endInterview]);
 
-  // ── Voice confirm ──
+  // ── Voice confirm answer ──
   const handleVoiceConfirm = useCallback(async () => {
     if (!transcript.trim()) return;
     setConfirming(true);
     stopListening();
-    const q = interviewRef.current?.questions[currentIndexRef.current];
-    const ok = await submitAnswer(q.id, transcript);
+
+    const iv = interviewRef.current;
+    const idx = currentIndexRef.current;
+    const mainQuestions = iv.questions.filter((q: any) => !q.isFollowUp);
+
+    // Are we answering a follow-up or main question?
+    const currentFollowUp = isFollowUpRef.current;
+    const qId = currentFollowUp && followUpQuestionIdRef.current
+      ? followUpQuestionIdRef.current
+      : mainQuestions[idx]?.id;
+
+    const ok = await submitAnswer(qId, transcript);
     setConfirming(false);
+
+    if (!ok) { setTranscript(""); return; }
+
+    if (currentFollowUp) {
+      // Follow-up answered → proceed to next main question
+      setTranscript("");
+      setIsFollowUp(false);
+      setFollowUpQuestion(null);
+      setFollowUpQuestionId(null);
+      isFollowUpRef.current = false;
+      followUpQuestionRef.current = null;
+      followUpQuestionIdRef.current = null;
+      proceedToNext();
+      return;
+    }
+
+    // Main question answered → check for follow-up
+    const shouldFollowUp = iv.allowFollowUps ? await checkFollowUp(qId, transcript) : false;
     setTranscript("");
-    if (ok) proceedToNext();
-  }, [transcript, submitAnswer, stopListening, proceedToNext]);
+
+    if (shouldFollowUp) {
+      // Speak the follow-up question
+      const fq = followUpQuestionRef.current;
+      if (fq) {
+        setIsFollowUp(true);
+        isFollowUpRef.current = true;
+        setTimeout(() => {
+          doSpeak(fq, () => { startListeningForAnswer(); });
+        }, 500);
+      } else {
+        proceedToNext();
+      }
+    } else {
+      proceedToNext();
+    }
+  }, [transcript, submitAnswer, stopListening, proceedToNext, checkFollowUp, doSpeak, startListeningForAnswer]);
 
   // ── Re-record ──
   const handleVoiceReRecord = useCallback(() => {
     setTranscript("");
-    const q = interviewRef.current?.questions[currentIndexRef.current];
-    doSpeak(q.question, () => { startListeningForAnswer(); });
+    const iv = interviewRef.current;
+    const idx = currentIndexRef.current;
+    const currentQ = isFollowUpRef.current && followUpQuestionRef.current
+      ? followUpQuestionRef.current
+      : iv?.questions?.filter((q: any) => !q.isFollowUp)[idx]?.question;
+    if (currentQ) doSpeak(currentQ, () => { startListeningForAnswer(); });
   }, [doSpeak, startListeningForAnswer]);
 
   // ── Text submit ──
   const handleTextSubmit = useCallback(async () => {
     if (!textAnswer.trim()) return;
     setSubmitting(true);
-    const q = interviewRef.current?.questions[currentIndexRef.current];
+    const iv = interviewRef.current;
+    const mainQuestions = iv.questions.filter((q: any) => !q.isFollowUp);
+    const q = mainQuestions[currentIndexRef.current];
     const ok = await submitAnswer(q.id, textAnswer);
     setSubmitting(false);
-    if (ok) { setTextAnswer(""); setJustAnswered(true); }
-  }, [textAnswer, submitAnswer]);
+    if (!ok) return;
 
-  const handleTextNext = useCallback(() => {
+    // Check for follow-up
+    const shouldFollowUp = iv.allowFollowUps ? await checkFollowUp(q.id, textAnswer) : false;
+    setTextAnswer("");
+    setJustAnswered(true);
+
+    if (shouldFollowUp && pendingFollowUp === null) {
+      // pendingFollowUp already set by checkFollowUp via state
+    }
+    // Note: checkFollowUp sets followUpQuestion/Id in state
+    // We use pendingFollowUp from interviewRef after the fetch
+  }, [textAnswer, submitAnswer, checkFollowUp]);
+
+  // Watch for follow-up being set after text submit
+  useEffect(() => {
+    if (justAnswered && followUpQuestion && !pendingFollowUp) {
+      setPendingFollowUp({ id: followUpQuestionId, question: followUpQuestion });
+    }
+  }, [justAnswered, followUpQuestion, pendingFollowUp, followUpQuestionId]);
+
+  // ── Text: answer follow-up ──
+  const handleTextAnswerFollowUp = useCallback(async () => {
+    if (!followUpAnswer.trim() || !pendingFollowUp?.id) return;
+    setSubmittingFollowUp(true);
+    const ok = await submitAnswer(pendingFollowUp.id, followUpAnswer);
+    setSubmittingFollowUp(false);
+    if (!ok) return;
+    setFollowUpAnswer("");
+    setPendingFollowUp(null);
+    setFollowUpJustAnswered(true);
+  }, [followUpAnswer, pendingFollowUp, submitAnswer]);
+
+  // ── Text: next after follow-up ──
+  const handleTextNextAfterFollowUp = useCallback(() => {
+    setFollowUpJustAnswered(false);
     setJustAnswered(false);
+    setFollowUpQuestion(null);
+    setFollowUpQuestionId(null);
     const iv = interviewRef.current;
     const idx = currentIndexRef.current;
-    const nextIndex = iv.questions.findIndex((q: any, i: number) => i > idx && !q.answered);
+    const mainQuestions = iv.questions.filter((q: any) => !q.isFollowUp);
+    const nextIndex = mainQuestions.findIndex((q: any, i: number) => i > idx && !q.answered && !q.skipped);
+    if (nextIndex !== -1) { setCurrentIndex(nextIndex); currentIndexRef.current = nextIndex; }
+    else endInterview();
+  }, [endInterview]);
+
+  // ── Text: next (no follow-up) ──
+  const handleTextNext = useCallback(() => {
+    setJustAnswered(false);
+    setPendingFollowUp(null);
+    setFollowUpQuestion(null);
+    setFollowUpQuestionId(null);
+    const iv = interviewRef.current;
+    const idx = currentIndexRef.current;
+    const mainQuestions = iv.questions.filter((q: any) => !q.isFollowUp);
+    const nextIndex = mainQuestions.findIndex((q: any, i: number) => i > idx && !q.answered && !q.skipped);
     if (nextIndex !== -1) { setCurrentIndex(nextIndex); currentIndexRef.current = nextIndex; }
     else endInterview();
   }, [endInterview]);
@@ -1215,82 +1305,57 @@ function InterviewSession() {
   // ── Setup complete ──
   const handleSetupComplete = useCallback(async (
     selectedGender: "male" | "female" | "prefer-not-to-say",
-    dob: string,
-    paceValue: number,
-    voiceName: string | null
+    dob: string, paceValue: number, selectedVoiceId: string | null
   ) => {
     const pace = paceFromSlider(paceValue);
-
-    // Store all settings in refs immediately
     genderRef.current = selectedGender;
     speechRateRef.current = pace.speechRate;
     silenceRepeatMsRef.current = pace.silenceRepeat;
     silenceSkipMsRef.current = pace.silenceSkip;
-    selectedVoiceNameRef.current = voiceName;
-
+    if (selectedVoiceId) voiceIdRef.current = selectedVoiceId;
     setGender(selectedGender);
     setSetupDone(true);
 
     const iv = interviewRef.current;
     if (iv?.interviewType === "VOICE") await startRecording();
-
     setPhase("opening");
 
     const openingMsg = iv?.opening?.message
       || `Hi ${iv?.candidateName?.split(" ")[0] || ""}! Welcome to your interview${iv?.jobTitle ? ` for the ${iv.jobTitle} position` : ""}. I'm your AI interviewer today. Take your time, speak clearly, and answer as fully as you can. Let's begin.`;
 
     if (iv?.interviewType === "VOICE") {
-      const goAfterOpening = () => {
-        setPhase("interview");
-        const firstQ = iv.questions[currentIndexRef.current];
-        if (!firstQ) return;
-        setTimeout(() => {
-          doSpeak(firstQ.question, () => {
-            startListeningForAnswer();
-          });
-        }, 600);
+      const go = () => {
+        doSpeak(openingMsg, () => {
+          setPhase("interview");
+          const mainQuestions = iv.questions.filter((q: any) => !q.isFollowUp);
+          const firstQ = mainQuestions[currentIndexRef.current];
+          if (firstQ) {
+            setTimeout(() => { doSpeak(firstQ.question, () => { startListeningForAnswer(); }); }, 600);
+          }
+        });
       };
-
-      const startSpeaking = () => {
-        doSpeak(openingMsg, goAfterOpening);
-      };
-
-      if (window.speechSynthesis.getVoices().length > 0) {
-        startSpeaking();
+      if (window.speechSynthesis.getVoices().length > 0 || voiceTierRef.current === "elevenlabs") {
+        go();
       } else {
-        window.speechSynthesis.onvoiceschanged = () => {
-          window.speechSynthesis.onvoiceschanged = null;
-          startSpeaking();
-        };
-        // Fallback if onvoiceschanged never fires (some browsers)
-        setTimeout(() => {
-          if (phase === "opening") startSpeaking();
-        }, 2000);
+        window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; go(); };
+        setTimeout(() => { if (phase === "opening") go(); }, 2000);
       }
     } else {
       setPhase("interview");
     }
   }, [doSpeak, startListeningForAnswer]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-purple-400" /></div>;
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center p-6">
-        <div className="max-w-md w-full rounded-3xl border border-white/10 bg-white/[0.02] p-10 text-center">
-          <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-4" />
-          <p className="text-white font-bold text-xl mb-2">Interview Error</p>
-          <p className="text-slate-400">{error}</p>
-        </div>
+  if (error) return (
+    <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center p-6">
+      <div className="max-w-md w-full rounded-3xl border border-white/10 bg-white/[0.02] p-10 text-center">
+        <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto mb-4" />
+        <p className="text-white font-bold text-xl mb-2">Interview Error</p>
+        <p className="text-slate-400">{error}</p>
       </div>
-    );
-  }
+    </div>
+  );
 
   if (!interview) return null;
 
@@ -1301,6 +1366,8 @@ function InterviewSession() {
         jobTitle={interview.jobTitle}
         companyName={interview.companyName}
         interviewType={interview.interviewType}
+        voiceTier={interview.voiceTier || "web-speech"}
+        defaultVoiceId={interview.voiceId}
         onStart={handleSetupComplete}
       />
     );
@@ -1321,6 +1388,8 @@ function InterviewSession() {
         confirming={confirming}
         phase={phase}
         liveJoined={liveJoined}
+        isFollowUp={isFollowUp}
+        followUpQuestion={followUpQuestion}
       />
     );
   }
@@ -1338,17 +1407,20 @@ function InterviewSession() {
       setCurrentIndex={(i) => { setCurrentIndex(i); currentIndexRef.current = i; }}
       setJustAnswered={setJustAnswered}
       phase={phase}
+      pendingFollowUp={pendingFollowUp}
+      onAnswerFollowUp={handleTextAnswerFollowUp}
+      followUpAnswer={followUpAnswer}
+      setFollowUpAnswer={setFollowUpAnswer}
+      submittingFollowUp={submittingFollowUp}
+      followUpJustAnswered={followUpJustAnswered}
+      onNextAfterFollowUp={handleTextNextAfterFollowUp}
     />
   );
 }
 
 export default function InterviewPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
-      </div>
-    }>
+    <Suspense fallback={<div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-500" /></div>}>
       <InterviewSession />
     </Suspense>
   );

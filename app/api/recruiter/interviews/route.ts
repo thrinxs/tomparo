@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { generateInterviewQuestions } from "@/lib/ai/interview-engine";
+import { generateInterviewQuestions, DEFAULT_MALE_VOICE_ID, DEFAULT_FEMALE_VOICE_ID } from "@/lib/ai/interview-engine";
 import { logActivity } from "@/lib/activity-log";
 
 const interviewAllowed = [
+  "RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE",
+  "RECRUITER_CUSTOM", "ADMIN",
+];
+
+const elevenlabsPlans = [
   "RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE",
   "RECRUITER_CUSTOM", "ADMIN",
 ];
@@ -59,16 +64,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const profile = await prisma.recruiterProfile.findUnique({ where: { userId } });
+    const profile = await prisma.recruiterProfile.findUnique({
+      where: { userId },
+      include: { interviewSettings: true },
+    });
     if (!profile) return NextResponse.json({ error: "Recruiter profile not found" }, { status: 404 });
 
-    const { candidateId, applicationId, jobId, mode, interviewType, scheduledAt } = await req.json();
+    const {
+      candidateId, applicationId, jobId, mode, interviewType,
+      scheduledAt, allowFollowUps, voiceId,
+    } = await req.json();
 
     if (!candidateId && !applicationId) {
       return NextResponse.json({ error: "Either candidateId or applicationId is required" }, { status: 400 });
     }
 
-    // ── Load candidate data ──
     let candidateName = "Candidate";
     let candidateEmail: string | null = null;
     let candidateLocation: string | null = null;
@@ -145,6 +155,15 @@ export async function POST(req: NextRequest) {
       if (job) { jobTitle = job.title; jobDescription = job.description; }
     }
 
+    // ── Resolve voice ID ──
+    let resolvedVoiceId: string | null = null;
+    if (elevenlabsPlans.includes(role) && interviewType === "VOICE") {
+      resolvedVoiceId =
+        voiceId ||
+        profile.interviewSettings?.defaultVoiceId ||
+        DEFAULT_MALE_VOICE_ID; // Brian as global default
+    }
+
     // ── Generate questions ──
     const generatedQuestions = await generateInterviewQuestions({
       candidateName,
@@ -159,11 +178,9 @@ export async function POST(req: NextRequest) {
       redFlags,
     });
 
-    // ── Validate interviewType ──
     const validTypes = ["TEXT", "VOICE", "VIDEO"];
     const resolvedType = validTypes.includes(interviewType) ? interviewType : "TEXT";
 
-    // ── Create interview ──
     const interview = await prisma.recruiterInterview.create({
       data: {
         recruiterId: profile.id,
@@ -173,6 +190,9 @@ export async function POST(req: NextRequest) {
         mode: mode || "ASYNC",
         interviewType: resolvedType,
         status: "PENDING",
+        voiceId: resolvedVoiceId,
+        allowFollowUps: allowFollowUps !== false, // default true
+        followUpCount: 0,
         candidateName,
         candidateEmail,
         candidateLocation,
@@ -195,7 +215,7 @@ export async function POST(req: NextRequest) {
       recruiterId: profile.id,
       type: "CANDIDATE_STATUS_CHANGED",
       title: "Interview created",
-      description: `${resolvedType} ${mode || "ASYNC"} interview started for ${candidateName}`,
+      description: `${resolvedType} ${mode || "ASYNC"} interview for ${candidateName}`,
       meta: { candidateName, jobTitle, mode, interviewType: resolvedType, interviewId: interview.id },
     });
 

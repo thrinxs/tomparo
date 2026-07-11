@@ -240,6 +240,7 @@ model RecruiterInterviewSettings {
   recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
 
   // Global opening
+  defaultVoiceId        String?
   globalOpening       String?  @db.Text
   globalOpeningType   MessageType @default(TEXT)
   globalOpeningUrl    String?
@@ -419,6 +420,9 @@ model RecruiterInterview {
   jobId                 String?
   job                   JobPosting?       @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
+  voiceId               String?
+  allowFollowUps        Boolean           @default(true)
+  followUpCount         Int               @default(0) 
   interviewType         InterviewType     @default(TEXT)
   mode                  InterviewMode     @default(ASYNC)
   status                InterviewStatus   @default(PENDING)
@@ -481,7 +485,9 @@ model RecruiterInterviewQuestion {
   question        String              @db.Text
   questionType    QuestionType        @default(BEHAVIOURAL)
   order           Int
-
+  isFollowUp            Boolean           @default(false)
+parentQuestionId      String?
+followUpReason        String?           @db.Text
   candidateAnswer String?             @db.Text
   aiScore         Int?
   aiFeedback      String?             @db.Text

@@ -663,3 +663,5 @@ export default function NewInterviewPage() {
     </Suspense>
   );
 }
+// Follow-up toggle added via settings on interview creation
+// The allowFollowUps field is passed in the POST body

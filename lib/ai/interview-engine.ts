@@ -251,3 +251,140 @@ RECOMMENDATION GUIDE:
     concerns: Array.isArray(result?.concerns) ? result.concerns : [],
   };
 }
+
+// ── ElevenLabs Voice Library ───────────────────────────────────────────────────
+
+export const ELEVENLABS_VOICES = [
+  { id: "nPczCjzI2devNBz1zQrb", name: "Brian", desc: "Deep, Resonant and Comforting", gender: "male" },
+  { id: "onwK4e9ZLuTAKqWW03F9", name: "Daniel", desc: "Steady Broadcaster", gender: "male" },
+  { id: "JBFqnCBsd6RMkjVDRZzb", name: "George", desc: "Warm, Captivating Storyteller", gender: "male" },
+  { id: "cjVigY5qzO86Huf0OWal", name: "Eric", desc: "Smooth, Trustworthy", gender: "male" },
+  { id: "iP95p4xoKVk53GoZ742B", name: "Chris", desc: "Charming, Down-to-Earth", gender: "male" },
+  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", desc: "Dominant, Firm", gender: "male" },
+  { id: "pqHfZKP75CvOlQylNhV4", name: "Bill", desc: "Wise, Mature, Balanced", gender: "male" },
+  { id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger", desc: "Laid-Back, Casual, Resonant", gender: "male" },
+  { id: "IKne3meq5aSn9XLyUdCD", name: "Charlie", desc: "Deep, Confident, Energetic", gender: "male" },
+  { id: "bIHbv24MWmeRgasZH58o", name: "Will", desc: "Relaxed Optimist", gender: "male" },
+  { id: "TX3LPaxmHKxFdv7VOQHJ", name: "Liam", desc: "Energetic, Social Media Creator", gender: "male" },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", desc: "Mature, Reassuring, Confident", gender: "female" },
+  { id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", desc: "Knowledgable, Professional", gender: "female" },
+  { id: "hpp4J3VqNfWAUOO0d1Us", name: "Bella", desc: "Professional, Bright, Warm", gender: "female" },
+  { id: "cgSgspJ2msm6clMCkdW9", name: "Jessica", desc: "Playful, Bright, Warm", gender: "female" },
+  { id: "Xb7hH8MSUJpSbSDYk0k2", name: "Alice", desc: "Clear, Engaging Educator", gender: "female" },
+  { id: "FGY2WhTYpPnrIDTdsKH5", name: "Laura", desc: "Enthusiast, Quirky Attitude", gender: "female" },
+  { id: "pFZP5JQG7iQjIQuC4Bku", name: "Lily", desc: "Velvety Actress", gender: "female" },
+  { id: "SAz9YHcvj6GT2YYXdXww", name: "River", desc: "Relaxed, Neutral, Informative", gender: "neutral" },
+];
+
+export const DEFAULT_MALE_VOICE_ID = "nPczCjzI2devNBz1zQrb"; // Brian
+export const DEFAULT_FEMALE_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"; // Sarah
+export const DEFAULT_NEUTRAL_VOICE_ID = "SAz9YHcvj6GT2YYXdXww"; // River
+
+// ── Follow-Up Question Engine ──────────────────────────────────────────────────
+
+export interface FollowUpDecision {
+  shouldAsk: boolean;
+  reason: string;
+  suggestedTopic: string;
+}
+
+export interface FollowUpQuestion {
+  question: string;
+  naturalOpener: string;
+}
+
+export async function analyzeForFollowUp(input: {
+  question: string;
+  questionType: string;
+  candidateAnswer: string;
+  jobTitle?: string;
+  candidateName?: string;
+  followUpCount: number;
+}): Promise<FollowUpDecision> {
+  const { question, questionType, candidateAnswer, jobTitle, candidateName, followUpCount } = input;
+
+  if (followUpCount >= 3) return { shouldAsk: false, reason: "Max follow-ups reached", suggestedTopic: "" };
+  if (candidateAnswer.trim().split(" ").length < 15) return { shouldAsk: false, reason: "Answer too short to follow up on", suggestedTopic: "" };
+
+  const prompt = `You are an expert interviewer evaluating whether a candidate's answer warrants a natural follow-up question.
+
+CONTEXT:
+- Candidate: ${candidateName || "the candidate"}
+- Job: ${jobTitle || "the position"}
+- Question type: ${questionType}
+- Follow-ups already asked this interview: ${followUpCount} (max 3)
+
+INTERVIEW QUESTION:
+${question}
+
+CANDIDATE'S ANSWER:
+${candidateAnswer}
+
+Analyze the answer and decide if a follow-up would add value. Follow-up is warranted when:
+- Candidate mentioned a specific achievement, tool, technology, or project worth exploring
+- Answer was vague or generic where specifics would reveal true competence
+- Candidate made an interesting claim that deserves verification
+- A key aspect of the answer could reveal much more about their expertise
+
+Follow-up is NOT warranted when:
+- Answer was already comprehensive and specific
+- Question was already answered fully
+- Answer revealed clear expertise without gaps
+
+Return ONLY a JSON object:
+{
+  "shouldAsk": true or false,
+  "reason": "brief reason why or why not",
+  "suggestedTopic": "what to ask about if shouldAsk is true, empty string if false"
+}`;
+
+  const result = await generateJSONWithGemini<FollowUpDecision>(prompt, "general");
+  return {
+    shouldAsk: result?.shouldAsk || false,
+    reason: result?.reason || "",
+    suggestedTopic: result?.suggestedTopic || "",
+  };
+}
+
+export async function generateFollowUpQuestion(input: {
+  question: string;
+  candidateAnswer: string;
+  suggestedTopic: string;
+  jobTitle?: string;
+  candidateName?: string;
+}): Promise<FollowUpQuestion> {
+  const { question, candidateAnswer, suggestedTopic, jobTitle, candidateName } = input;
+
+  const prompt = `You are a warm, natural human interviewer. Based on the candidate's answer, write ONE follow-up question that feels completely natural — like something a real human interviewer would say.
+
+CONTEXT:
+- Candidate: ${candidateName || "the candidate"}
+- Job: ${jobTitle || "the position"}
+- Topic to explore: ${suggestedTopic}
+
+ORIGINAL QUESTION:
+${question}
+
+CANDIDATE'S ANSWER:
+${candidateAnswer}
+
+Write a follow-up that:
+- Sounds completely natural and human — NOT robotic or formulaic
+- References something SPECIFIC the candidate just said
+- Opens with a natural acknowledgement (e.g. "That's interesting...", "I see...", "You mentioned...", "Right, so...", "Okay, and...")
+- Is ONE focused question — not multiple questions
+- Feels like natural conversation, not an interrogation
+- Is warm and encouraging in tone
+
+Return ONLY a JSON object:
+{
+  "naturalOpener": "The opening acknowledgement only (e.g. 'That's really interesting.')",
+  "question": "The full follow-up question text including the opener"
+}`;
+
+  const result = await generateJSONWithGemini<FollowUpQuestion>(prompt, "general");
+  return {
+    question: result?.question || `Can you tell me more about that?`,
+    naturalOpener: result?.naturalOpener || "That's interesting.",
+  };
+}
