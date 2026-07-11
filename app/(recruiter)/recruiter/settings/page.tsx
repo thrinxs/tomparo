@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Building2, Mail, Globe, Users, Briefcase,
   Save, Loader2, CheckCircle, Info, Lock, UserPlus,
-  Copy, ExternalLink,
+  Copy, ExternalLink, MessageSquare, Plus, Trash2,
+  ChevronDown, ChevronUp, Mic, Type, Video,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -20,6 +21,28 @@ const seatLimits: Record<string, number> = {
   RECRUITER_BUSINESS: 5, RECRUITER_ENTERPRISE: 10,
   RECRUITER_SCALE: 25, RECRUITER_CUSTOM: 999, ADMIN: 999,
 };
+
+const triggerOptions = [
+  { value: "before_question", label: "Before a specific question number" },
+  { value: "question_type", label: "Before every question of a type" },
+  { value: "timed", label: "After a set number of minutes" },
+];
+
+const questionTypeOptions = [
+  { value: "CV_VERIFICATION", label: "CV Verification" },
+  { value: "LOCATION_BASED", label: "Location Based" },
+  { value: "JOB_SPECIFIC", label: "Job Specific" },
+  { value: "BEHAVIOURAL", label: "Behavioural" },
+];
+
+interface Instruction {
+  id: string;
+  trigger: "before_question" | "question_type" | "timed";
+  questionIndex?: number;
+  questionType?: string;
+  afterMinutes?: number;
+  message: string;
+}
 
 type UsernameStatus = "idle" | "checking" | "available" | "taken" | "invalid" | "reserved";
 
@@ -55,10 +78,18 @@ export default function RecruiterSettingsPage() {
   const [inviting, setInviting] = useState(false);
   const [seatLimit, setSeatLimit] = useState(1);
 
+  // ── Interview Settings fields ──
+  const [globalOpening, setGlobalOpening] = useState("");
+  const [globalClosing, setGlobalClosing] = useState("");
+  const [globalInstructions, setGlobalInstructions] = useState<Instruction[]>([]);
+  const [showInterviewSettings, setShowInterviewSettings] = useState(false);
+  const [savingInterviewSettings, setSavingInterviewSettings] = useState(false);
+  const [interviewSettingsSaved, setInterviewSettingsSaved] = useState(false);
+
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        // Fetch company profile
+        // Company profile
         const res = await fetch("/api/recruiter/settings");
         const data = await res.json();
         if (data.profile) {
@@ -74,17 +105,34 @@ export default function RecruiterSettingsPage() {
           setSlugLocked(data.profile.slugLocked || false);
         }
 
-        // Fetch team
+        // Team
         const teamRes = await fetch("/api/recruiter/team");
         const teamData = await teamRes.json();
         if (teamData.members) setTeamMembers(teamData.members);
         if (teamData.invites) setPendingInvites(teamData.invites);
 
-        // Fetch seat limit from user profile
+        // Seat limit
         const profileRes = await fetch("/api/user/profile");
         const profileData = await profileRes.json();
         if (profileData.user?.role) {
           setSeatLimit(seatLimits[profileData.user.role] || 1);
+        }
+
+        // Interview settings
+        const intRes = await fetch("/api/recruiter/interview-settings");
+        const intData = await intRes.json();
+        if (intData.settings) {
+          setGlobalOpening(intData.settings.globalOpening || "");
+          setGlobalClosing(intData.settings.globalClosing || "");
+          if (intData.settings.globalInstructions) {
+            try {
+              const parsed = JSON.parse(intData.settings.globalInstructions);
+              setGlobalInstructions(parsed.map((ins: any) => ({
+                ...ins,
+                id: ins.id || Math.random().toString(36).slice(2),
+              })));
+            } catch {}
+          }
         }
       } catch {
         toast.error("Failed to load settings");
@@ -95,22 +143,19 @@ export default function RecruiterSettingsPage() {
     fetchAll();
   }, []);
 
-  // ── Username availability check ──────────────────────────────────────────────
-
+  // ── Username check ──
   const checkUsername = useCallback(async (value: string) => {
     if (!value || value === originalUsername) {
       setUsernameStatus("idle");
       setUsernameMessage("");
       return;
     }
-
     const regex = /^[a-z0-9]{3,20}$/;
     if (!regex.test(value)) {
       setUsernameStatus("invalid");
       setUsernameMessage("Must be 3-20 characters, lowercase letters and numbers only");
       return;
     }
-
     setUsernameStatus("checking");
     try {
       const params = new URLSearchParams({ slug: value });
@@ -141,8 +186,6 @@ export default function RecruiterSettingsPage() {
     setCheckTimer(timer);
   };
 
-  // ── Confirm username ──────────────────────────────────────────────────────────
-
   const handleConfirmUsername = async () => {
     if (usernameStatus !== "available") return;
     setSavingUsername(true);
@@ -170,13 +213,8 @@ export default function RecruiterSettingsPage() {
     }
   };
 
-  // ── Save all settings ─────────────────────────────────────────────────────────
-
   const handleSave = async () => {
-    if (!companyName.trim()) {
-      toast.error("Company name is required");
-      return;
-    }
+    if (!companyName.trim()) { toast.error("Company name is required"); return; }
     setSaving(true);
     try {
       const res = await fetch("/api/recruiter/settings", {
@@ -185,10 +223,7 @@ export default function RecruiterSettingsPage() {
         body: JSON.stringify({ companyName, companySize, industry, website, description, replyToEmail }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "Failed to save settings");
-        return;
-      }
+      if (!res.ok) { toast.error(data.error || "Failed to save settings"); return; }
       toast.success("Settings saved!");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -199,8 +234,48 @@ export default function RecruiterSettingsPage() {
     }
   };
 
-  // ── Team handlers ─────────────────────────────────────────────────────────────
+  // ── Save global interview settings ──
+  const handleSaveInterviewSettings = async () => {
+    setSavingInterviewSettings(true);
+    try {
+      const res = await fetch("/api/recruiter/interview-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          globalOpening: globalOpening.trim() || null,
+          globalClosing: globalClosing.trim() || null,
+          globalInstructions: globalInstructions.length > 0 ? globalInstructions : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success("Interview template saved!");
+      setInterviewSettingsSaved(true);
+      setTimeout(() => setInterviewSettingsSaved(false), 3000);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save interview settings");
+    } finally {
+      setSavingInterviewSettings(false);
+    }
+  };
 
+  // ── Instruction helpers ──
+  const addInstruction = () => {
+    setGlobalInstructions((prev) => [
+      ...prev,
+      { id: Math.random().toString(36).slice(2), trigger: "before_question", questionIndex: 2, message: "" },
+    ]);
+  };
+
+  const updateInstruction = (id: string, updates: Partial<Instruction>) => {
+    setGlobalInstructions((prev) => prev.map((ins) => ins.id === id ? { ...ins, ...updates } : ins));
+  };
+
+  const removeInstruction = (id: string) => {
+    setGlobalInstructions((prev) => prev.filter((ins) => ins.id !== id));
+  };
+
+  // ── Team handlers ──
   const handleInvite = async () => {
     if (!inviteEmail.trim()) return;
     setInviting(true);
@@ -211,10 +286,7 @@ export default function RecruiterSettingsPage() {
         body: JSON.stringify({ email: inviteEmail, memberRole: inviteRole }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "Failed to send invite");
-        return;
-      }
+      if (!res.ok) { toast.error(data.error || "Failed to send invite"); return; }
       setPendingInvites((prev) => [...prev, data.invite]);
       setInviteEmail("");
       toast.success("Invite sent!");
@@ -263,7 +335,7 @@ export default function RecruiterSettingsPage() {
 
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
-        <p className="text-slate-400 mt-1">Manage your company profile and email preferences</p>
+        <p className="text-slate-400 mt-1">Manage your company profile, email preferences, and interview templates</p>
       </div>
 
       {/* ── Company Profile ── */}
@@ -544,6 +616,271 @@ export default function RecruiterSettingsPage() {
               <p>↩️ Candidate clicks Reply → goes to <span className="text-emerald-400">{replyToEmail}</span></p>
               <p>📋 CC copy (if ticked when sending) → also goes to <span className="text-emerald-400">{replyToEmail}</span></p>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Global Interview Message Template ── */}
+      <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 overflow-hidden">
+        <button
+          onClick={() => setShowInterviewSettings(!showInterviewSettings)}
+          className="w-full flex items-center justify-between p-6 hover:bg-white/[0.01] transition"
+        >
+          <div className="flex items-center gap-3">
+            <MessageSquare className="w-4 h-4 text-indigo-400 shrink-0" />
+            <div className="text-left">
+              <p className="text-sm font-semibold text-white">
+                Global Interview Message Template
+              </p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Default opening, closing, and mid-interview instructions for all AI interviews.
+                Can be overridden per interview.
+              </p>
+            </div>
+          </div>
+          {showInterviewSettings
+            ? <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
+            : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+          }
+        </button>
+
+        {showInterviewSettings && (
+          <div className="px-6 pb-6 space-y-6 border-t border-white/5 pt-6">
+
+            {/* Info box */}
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 flex items-start gap-3">
+              <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-slate-400 space-y-1">
+                <p>These messages apply to <span className="text-white">all interviews</span> by default.</p>
+                <p>When creating an individual interview, you can override any of these with a custom message.</p>
+                <p>Use <span className="text-indigo-400">[Name]</span> for candidate name, <span className="text-indigo-400">[Job]</span> for job title, <span className="text-indigo-400">[Company]</span> for your company name.</p>
+              </div>
+            </div>
+
+            {/* Interview type note */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { icon: Type, label: "Text", color: "text-indigo-400", note: "AI displays text" },
+                { icon: Mic, label: "Voice", color: "text-violet-400", note: "AI reads aloud" },
+                { icon: Video, label: "Video", color: "text-pink-400", note: "AI reads aloud" },
+              ].map(({ icon: Icon, label, color, note }) => (
+                <div key={label} className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-center">
+                  <Icon className={`w-4 h-4 ${color} mx-auto mb-1`} />
+                  <p className={`text-xs font-semibold ${color}`}>{label}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{note}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Global opening */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-white">
+                Global Opening Message
+              </label>
+              <p className="text-[11px] text-slate-500">
+                AI says this at the very start of every interview. Leave blank for TomParo default.
+              </p>
+              <textarea
+                value={globalOpening}
+                onChange={(e) => setGlobalOpening(e.target.value)}
+                placeholder={`Hi [Name]! Welcome to your interview for [Job] at [Company]. I'm your AI interviewer today. Take your time and answer as fully as you can. Let's begin.`}
+                rows={4}
+                className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500/50 resize-none transition"
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-slate-600">
+                  {globalOpening.length} / 500 characters
+                </p>
+                {globalOpening && (
+                  <button
+                    onClick={() => setGlobalOpening("")}
+                    className="text-[10px] text-slate-500 hover:text-red-400 transition"
+                  >
+                    Clear (use TomParo default)
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Global closing */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-white">
+                Global Closing Message
+              </label>
+              <p className="text-[11px] text-slate-500">
+                AI says this after all questions are answered. Leave blank for TomParo default.
+              </p>
+              <textarea
+                value={globalClosing}
+                onChange={(e) => setGlobalClosing(e.target.value)}
+                placeholder={`That's all for today, [Name]. Thank you for your time. The team will review your responses and be in touch soon. Good luck!`}
+                rows={4}
+                className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder-slate-600 outline-none focus:border-indigo-500/50 resize-none transition"
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-slate-600">
+                  {globalClosing.length} / 500 characters
+                </p>
+                {globalClosing && (
+                  <button
+                    onClick={() => setGlobalClosing("")}
+                    className="text-[10px] text-slate-500 hover:text-red-400 transition"
+                  >
+                    Clear (use TomParo default)
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Global mid-interview instructions */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-semibold text-white">
+                    Global Mid-Interview Instructions
+                  </label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    AI says these at specific points in every interview.
+                  </p>
+                </div>
+                <button
+                  onClick={addInstruction}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-500 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add
+                </button>
+              </div>
+
+              {globalInstructions.length === 0 && (
+                <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 text-center">
+                  <p className="text-xs text-slate-500">No global instructions yet.</p>
+                  <p className="text-[10px] text-slate-600 mt-1">
+                    Example: "Before every Job Specific question, say: This section is about the role."
+                  </p>
+                </div>
+              )}
+
+              {globalInstructions.map((ins, idx) => (
+                <div key={ins.id} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-white">Instruction {idx + 1}</p>
+                    <button
+                      onClick={() => removeInstruction(ins.id)}
+                      className="p-1 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Trigger */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">When to say it</label>
+                    <div className="flex flex-col gap-1.5">
+                      {triggerOptions.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => updateInstruction(ins.id, { trigger: opt.value as any })}
+                          className={`text-left px-3 py-2 rounded-lg text-xs transition ${
+                            ins.trigger === opt.value
+                              ? "bg-indigo-500/10 border border-indigo-500/20 text-indigo-400"
+                              : "bg-white/[0.02] border border-white/5 text-slate-400 hover:border-white/10"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {ins.trigger === "before_question" && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                        Before question number
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={ins.questionIndex || 2}
+                        onChange={(e) => updateInstruction(ins.id, { questionIndex: parseInt(e.target.value) })}
+                        className="w-24 rounded-lg border border-white/10 bg-slate-900/50 px-3 py-1.5 text-sm text-white outline-none focus:border-indigo-500/50 transition"
+                      />
+                    </div>
+                  )}
+
+                  {ins.trigger === "question_type" && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                        Before every question of type
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {questionTypeOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => updateInstruction(ins.id, { questionType: opt.value })}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs transition ${
+                              ins.questionType === opt.value
+                                ? "bg-indigo-500/10 border border-indigo-500/20 text-indigo-400"
+                                : "bg-white/[0.02] border border-white/5 text-slate-400 hover:border-white/10"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {ins.trigger === "timed" && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                        After how many minutes
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={ins.afterMinutes || 5}
+                        onChange={(e) => updateInstruction(ins.id, { afterMinutes: parseInt(e.target.value) })}
+                        className="w-24 rounded-lg border border-white/10 bg-slate-900/50 px-3 py-1.5 text-sm text-white outline-none focus:border-indigo-500/50 transition"
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                      What should AI say
+                    </label>
+                    <textarea
+                      value={ins.message}
+                      onChange={(e) => updateInstruction(ins.id, { message: e.target.value })}
+                      placeholder='e.g. "Great work so far. We are now moving to the technical section."'
+                      rows={2}
+                      className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-indigo-500/50 resize-none transition"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Save interview settings */}
+            <button
+              onClick={handleSaveInterviewSettings}
+              disabled={savingInterviewSettings}
+              className={`w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-white font-semibold transition disabled:opacity-50 ${
+                interviewSettingsSaved
+                  ? "bg-emerald-600 hover:bg-emerald-500"
+                  : "bg-indigo-600 hover:bg-indigo-500"
+              }`}
+            >
+              {savingInterviewSettings ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Saving...</>
+              ) : interviewSettingsSaved ? (
+                <><CheckCircle className="w-4 h-4" />Interview Template Saved!</>
+              ) : (
+                <><Save className="w-4 h-4" />Save Interview Template</>
+              )}
+            </button>
           </div>
         )}
       </div>
