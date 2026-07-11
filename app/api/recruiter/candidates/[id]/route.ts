@@ -27,7 +27,7 @@ export async function GET(
     return NextResponse.json({ candidate });
   } catch (error) {
     console.error("Get candidate error:", error);
-    return NextResponse.json({ error: "Failed to fetch candidate" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to get candidate" }, { status: 500 });
   }
 }
 
@@ -54,18 +54,18 @@ export async function PATCH(
     const candidate = await prisma.recruiterCandidate.update({
       where: { id },
       data: {
-        status: body.status ?? existing.status,
-        notes: body.notes ?? existing.notes,
+        ...(body.status ? { status: body.status } : {}),
+        ...(body.notes !== undefined ? { notes: body.notes } : {}),
       },
     });
 
-    if (status) {
+    if (body.status) {
       await logActivity({
         recruiterId: profile.id,
         type: "CANDIDATE_STATUS_CHANGED",
         title: "Candidate status updated",
-        description: `${existing.candidateName || "Candidate"} → ${status}`,
-        meta: { candidateName: existing.candidateName, status },
+        description: `${existing.candidateName || "Candidate"} → ${body.status}`,
+        meta: { candidateName: existing.candidateName, status: body.status },
       });
     }
 
@@ -73,5 +73,32 @@ export async function PATCH(
   } catch (error) {
     console.error("Update candidate error:", error);
     return NextResponse.json({ error: "Failed to update candidate" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const session = await getServerSession(authOptions);
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const userId = (session.user as any).id as string;
+    const profile = await prisma.recruiterProfile.findUnique({ where: { userId } });
+    if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+
+    const existing = await prisma.recruiterCandidate.findFirst({
+      where: { id, recruiterId: profile.id },
+    });
+    if (!existing) return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
+
+    await prisma.recruiterCandidate.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Delete candidate error:", error);
+    return NextResponse.json({ error: "Failed to delete candidate" }, { status: 500 });
   }
 }

@@ -5,20 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
-  LayoutDashboard,
-  FileText,
-  Target,
-  Mail,
-  TrendingUp,
-  MessageSquareText,
-  Brain,
-  MessageCircle,
-  Inbox,
-  History,
-  Settings,
-  Lock,
-  Crown,
-  Zap,
+  LayoutDashboard, FileText, Target, Mail, TrendingUp,
+  MessageSquareText, Brain, MessageCircle, Inbox,
+  History, Settings, Lock, Crown, Zap, X,
 } from "lucide-react";
 
 interface NavItem {
@@ -42,17 +31,34 @@ const navItems: NavItem[] = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
-export default function DashboardSidebar() {
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function DashboardSidebar({ isOpen, onClose }: Props) {
   const pathname = usePathname();
   const { data: session } = useSession();
-
   const isPremium = (session?.user as any)?.isPremium || false;
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-white/5 bg-slate-950/95 backdrop-blur-xl">
-      {/* Logo */}
-      <div className="border-b border-white/5 px-6 py-4">
+    <aside className={`
+      fixed left-0 top-0 z-40 flex h-screen w-64 flex-col
+      border-r border-white/5 bg-slate-950/95 backdrop-blur-xl
+      transition-transform duration-300 ease-in-out
+      ${isOpen ? "translate-x-0" : "-translate-x-full"}
+      lg:translate-x-0
+    `}>
+
+      {/* Logo + close button */}
+      <div className="border-b border-white/5 px-4 py-4 flex items-center justify-between">
         <Logo size="md" />
+        <button
+          onClick={onClose}
+          className="lg:hidden rounded-xl border border-white/10 bg-white/5 p-1.5 text-slate-400 hover:text-white transition"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Navigation */}
@@ -66,6 +72,7 @@ export default function DashboardSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onClose}
               className={`group flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition ${
                 isActive
                   ? "bg-blue-500/10 text-blue-400"
@@ -76,11 +83,9 @@ export default function DashboardSidebar() {
                 <Icon className="h-4 w-4" />
                 <span>{item.label}</span>
               </div>
-
               {isLocked && (
                 <Lock className="h-3.5 w-3.5 text-slate-600 group-hover:text-slate-400" />
               )}
-
               {item.premium && !isLocked && (
                 <Crown className="h-3.5 w-3.5 text-amber-400" />
               )}
@@ -92,22 +97,19 @@ export default function DashboardSidebar() {
       {/* Upgrade Banner */}
       {!isPremium && (
         <div className="border-t border-white/5 p-4">
-          <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-600/10 to-cyan-500/5 p-5">
-            <div className="mb-3 flex items-center gap-2">
+          <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-600/10 to-cyan-500/5 p-4">
+            <div className="mb-2 flex items-center gap-2">
               <Zap className="h-4 w-4 text-blue-400" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">
-                Upgrade
-              </span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Upgrade</span>
             </div>
-            <h3 className="text-sm font-semibold text-white">
-              Unlock Premium
-            </h3>
+            <h3 className="text-sm font-semibold text-white">Unlock Premium</h3>
             <p className="mt-1 text-xs text-slate-400">
               Interview coach, AI chat, career roadmap & more.
             </p>
             <Link
               href="/pricing"
-              className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-blue-700/25 transition hover:bg-blue-500"
+              onClick={onClose}
+              className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-blue-700/25 transition hover:bg-blue-500"
             >
               Upgrade Now
             </Link>

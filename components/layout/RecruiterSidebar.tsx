@@ -5,20 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
-  LayoutDashboard,
-  Users,
-  Briefcase,
-  Upload,
-  Mic,
-  Mail,
-  Bot,
-  BarChart3,
-  Settings,
-  Lock,
-  Rocket,
-  FileText,
-  Kanban,
-  Inbox,
+  LayoutDashboard, Users, Briefcase, Upload, Mic, Mail,
+  Bot, BarChart3, Settings, Lock, Rocket, FileText,
+  Kanban, Inbox, X, MessageSquare,
 } from "lucide-react";
 
 interface NavItem {
@@ -30,108 +19,39 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { href: "/recruiter", label: "Overview", icon: LayoutDashboard },
+  { href: "/recruiter/jobs", label: "Job Postings", icon: Briefcase },
+  { href: "/recruiter/talent-pool", label: "Talent Pool", icon: Inbox },
+  { href: "/recruiter/candidates", label: "Candidates", icon: Users },
+  { href: "/recruiter/upload", label: "Upload CVs", icon: Upload },
   {
-    href: "/recruiter",
-    label: "Overview",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/recruiter/jobs",
-    label: "Job Postings",
-    icon: Briefcase,
-  },
-  {
-    href: "/recruiter/talent-pool",
-    label: "Talent Pool",
-    icon: Inbox,
-  },
-  {
-    href: "/recruiter/candidates",
-    label: "Candidates",
-    icon: Users,
-  },
-  {
-    href: "/recruiter/upload",
-    label: "Upload CVs",
-    icon: Upload,
-  },
-  {
-    href: "/recruiter/pipeline",
-    label: "Pipeline",
-    icon: Kanban,
-    requiredPlan: [
-      "RECRUITER_GROWTH",
-      "RECRUITER_BUSINESS",
-      "RECRUITER_ENTERPRISE",
-      "RECRUITER_SCALE",
-      "RECRUITER_CUSTOM",
-    ],
+    href: "/recruiter/pipeline", label: "Pipeline", icon: Kanban,
+    requiredPlan: ["RECRUITER_GROWTH", "RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
     dividerBefore: true,
   },
   {
-    href: "/recruiter/bulk",
-    label: "Bulk Upload",
-    icon: FileText,
-    requiredPlan: [
-      "RECRUITER_GROWTH",
-      "RECRUITER_BUSINESS",
-      "RECRUITER_ENTERPRISE",
-      "RECRUITER_SCALE",
-      "RECRUITER_CUSTOM",
-    ],
+    href: "/recruiter/bulk", label: "Bulk Upload", icon: FileText,
+    requiredPlan: ["RECRUITER_GROWTH", "RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
   },
   {
-    href: "/recruiter/interviews",
-    label: "AI Interviews",
-    icon: Mic,
-    requiredPlan: [
-      "RECRUITER_BUSINESS",
-      "RECRUITER_ENTERPRISE",
-      "RECRUITER_SCALE",
-      "RECRUITER_CUSTOM",
-    ],
+    href: "/recruiter/interviews", label: "AI Interviews", icon: MessageSquare,
+    requiredPlan: ["RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
     dividerBefore: true,
   },
   {
-    href: "/recruiter/emails",
-    label: "AI Emails",
-    icon: Mail,
-    requiredPlan: [
-      "RECRUITER_GROWTH",
-      "RECRUITER_BUSINESS",
-      "RECRUITER_ENTERPRISE",
-      "RECRUITER_SCALE",
-      "RECRUITER_CUSTOM",
-    ],
+    href: "/recruiter/emails", label: "AI Emails", icon: Mail,
+    requiredPlan: ["RECRUITER_GROWTH", "RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
   },
   {
-    href: "/recruiter/autopilot",
-    label: "AI Autopilot",
-    icon: Bot,
-    requiredPlan: [
-      "RECRUITER_ENTERPRISE",
-      "RECRUITER_SCALE",
-      "RECRUITER_CUSTOM",
-    ],
+    href: "/recruiter/autopilot", label: "AI Autopilot", icon: Bot,
+    requiredPlan: ["RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
     dividerBefore: true,
   },
   {
-    href: "/recruiter/analytics",
-    label: "Analytics",
-    icon: BarChart3,
-    requiredPlan: [
-      "RECRUITER_BUSINESS",
-      "RECRUITER_ENTERPRISE",
-      "RECRUITER_SCALE",
-      "RECRUITER_CUSTOM",
-    ],
+    href: "/recruiter/analytics", label: "Analytics", icon: BarChart3,
+    requiredPlan: ["RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
   },
-  {
-    href: "/recruiter/settings",
-    label: "Settings",
-    icon: Settings,
-    dividerBefore: true,
-  },
+  { href: "/recruiter/settings", label: "Settings", icon: Settings, dividerBefore: true },
 ];
 
 const planNames: Record<string, string> = {
@@ -145,20 +65,19 @@ const planNames: Record<string, string> = {
 
 const minPlanLabel = (requiredPlan: string[]) => {
   const order = [
-    "RECRUITER_STARTER",
-    "RECRUITER_GROWTH",
-    "RECRUITER_BUSINESS",
-    "RECRUITER_ENTERPRISE",
-    "RECRUITER_SCALE",
-    "RECRUITER_CUSTOM",
+    "RECRUITER_STARTER", "RECRUITER_GROWTH", "RECRUITER_BUSINESS",
+    "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM",
   ];
-  const min = requiredPlan.reduce((a, b) =>
-    order.indexOf(a) < order.indexOf(b) ? a : b
-  );
+  const min = requiredPlan.reduce((a, b) => order.indexOf(a) < order.indexOf(b) ? a : b);
   return planNames[min] ?? "Growth";
 };
 
-export default function RecruiterSidebar() {
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function RecruiterSidebar({ isOpen, onClose }: Props) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const role = (session?.user as any)?.role as string | undefined;
@@ -173,11 +92,23 @@ export default function RecruiterSidebar() {
   const hasNoRole = !role || role === "FREE";
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-white/5 bg-slate-950/95 backdrop-blur-xl">
+    <aside className={`
+      fixed left-0 top-0 z-40 flex h-screen w-64 flex-col
+      border-r border-white/5 bg-slate-950/95 backdrop-blur-xl
+      transition-transform duration-300 ease-in-out
+      ${isOpen ? "translate-x-0" : "-translate-x-full"}
+      lg:translate-x-0
+    `}>
 
-      {/* Logo */}
-      <div className="border-b border-white/5 px-6 py-4">
+      {/* Logo + close button (mobile) */}
+      <div className="border-b border-white/5 px-4 py-4 flex items-center justify-between">
         <Logo size="md" href="/recruiter" />
+        <button
+          onClick={onClose}
+          className="lg:hidden rounded-xl border border-white/10 bg-white/5 p-1.5 text-slate-400 hover:text-white transition"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Plan badge */}
@@ -204,12 +135,10 @@ export default function RecruiterSidebar() {
 
           return (
             <div key={item.href}>
-              {item.dividerBefore && (
-                <div className="my-2 border-t border-white/5" />
-              )}
-
+              {item.dividerBefore && <div className="my-2 border-t border-white/5" />}
               <Link
                 href={locked ? "/recruiter-pricing" : item.href}
+                onClick={onClose}
                 className={`group flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition ${
                   isActive
                     ? "bg-purple-500/10 text-purple-400"
@@ -219,18 +148,9 @@ export default function RecruiterSidebar() {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Icon
-                    className={`h-4 w-4 ${
-                      isActive
-                        ? "text-purple-400"
-                        : locked
-                        ? "text-slate-700"
-                        : ""
-                    }`}
-                  />
+                  <Icon className={`h-4 w-4 ${isActive ? "text-purple-400" : locked ? "text-slate-700" : ""}`} />
                   <span>{item.label}</span>
                 </div>
-
                 {locked && (
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] text-slate-600 group-hover:text-slate-500">
@@ -248,22 +168,17 @@ export default function RecruiterSidebar() {
       {/* Upgrade Banner */}
       {(isStarter || hasNoRole) && (
         <div className="border-t border-white/5 p-4">
-          <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-600/10 to-pink-500/5 p-5">
-            <div className="mb-3 flex items-center gap-2">
+          <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-600/10 to-pink-500/5 p-4">
+            <div className="mb-2 flex items-center gap-2">
               <Rocket className="h-4 w-4 text-purple-400" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">
-                Upgrade
-              </span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">Upgrade</span>
             </div>
-            <h3 className="text-sm font-semibold text-white">
-              Unlock More Features
-            </h3>
-            <p className="mt-1 text-xs text-slate-400">
-              Bulk upload, AI interviews, autopilot & more.
-            </p>
+            <h3 className="text-sm font-semibold text-white">Unlock More Features</h3>
+            <p className="mt-1 text-xs text-slate-400">Bulk upload, AI interviews, autopilot & more.</p>
             <Link
               href="/recruiter-pricing"
-              className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-purple-600 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-purple-700/25 transition hover:bg-purple-500"
+              onClick={onClose}
+              className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-purple-600 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-purple-700/25 transition hover:bg-purple-500"
             >
               See Plans
             </Link>
