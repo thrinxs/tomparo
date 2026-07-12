@@ -209,6 +209,7 @@ model RecruiterProfile {
   invites         RecruiterInvite[]
   interviews      RecruiterInterview[]
   interviewSettings RecruiterInterviewSettings?
+  interviewNotes       RecruiterInterviewNote[]
 
   // Company Info
   companyName     String
@@ -451,7 +452,11 @@ model RecruiterInterview {
   customInstructions    String?           @db.Text
 
   // Recording
-  recordingUrl          String?           // Supabase Storage path
+  recordingUrl          String?
+  stealthMode           Boolean  @default(false)
+  liveTranscript        String?  @db.Text
+  liveTranscriptUpdatedAt DateTime?
+  notes                 RecruiterInterviewNote[]           // Supabase Storage path
   recordingUploadedAt   DateTime?
 
   shareToken            String            @unique @default(cuid())
@@ -492,6 +497,9 @@ followUpReason        String?           @db.Text
   aiScore         Int?
   aiFeedback      String?             @db.Text
   skipped         Boolean             @default(false)
+  recruiterRating       Int?
+  flagged               Boolean  @default(false)
+  recruiterNote         String?  @db.Text
 
   answeredAt      DateTime?
   createdAt       DateTime            @default(now())
@@ -591,4 +599,15 @@ enum QuestionType {
   LOCATION_BASED
   JOB_SPECIFIC
   BEHAVIOURAL
+}
+
+model RecruiterInterviewNote {
+  id          String   @id @default(cuid())
+  interviewId String
+  recruiterId String
+  note        String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  interview   RecruiterInterview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  recruiter   RecruiterProfile   @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
 }

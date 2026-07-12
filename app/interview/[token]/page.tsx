@@ -997,6 +997,12 @@ function InterviewSession() {
           setSilencePhase("none");
           silenceStartRef.current = null;
           setTranscript(full);
+          // Send live transcript to DB so recruiter monitor can see it in real time
+          fetch(`/api/interview-session/${token}/transcript`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript: full }),
+          }).catch(() => {});
         } else if (msg.message_type === "PartialTranscript" && msg.text?.trim()) {
           setTranscript((finalTranscriptRef.current + msg.text).trim());
           silenceStartRef.current = null;
