@@ -86,8 +86,8 @@ async function speakElevenLabs(text: string, voiceId: string, onEnd: () => void)
     body: JSON.stringify({ text: text.trim(), voiceId }),
   });
 
-  // Reject (don't catch) so doSpeak .catch() can fall back to Web Speech
-  if (!res.ok) throw new Error("ElevenLabs unavailable");
+  // 503 = both ElevenLabs and HuggingFace failed — reject so doSpeak falls back to Web Speech
+  if (!res.ok) throw new Error("TTS unavailable");
 
   const blob = await res.blob();
   if (cancelled) return () => {};
