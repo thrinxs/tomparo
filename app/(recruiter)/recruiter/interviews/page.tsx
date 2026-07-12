@@ -109,9 +109,11 @@ export default function InterviewsPage() {
   const [showSort, setShowSort] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [liveInterviews, setLiveInterviews] = useState<any[]>([]);
 
-  const fetchInterviews = useCallback(async () => {
+  const fetchInterviews = useCallback(async (isManual = false) => {
+    if (isManual) setRefreshing(true);
     try {
       const res = await fetch("/api/recruiter/interviews");
       if (res.status === 403) { setLocked(true); return; }
@@ -124,6 +126,7 @@ export default function InterviewsPage() {
       toast.error(err.message || "Failed to load interviews");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -279,9 +282,9 @@ export default function InterviewsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchInterviews}
-            className="p-2.5 rounded-xl border border-white/10 bg-white/[0.02] text-slate-400 hover:text-white hover:bg-white/5 transition">
-            <RefreshCw className="w-4 h-4" />
+          <button onClick={() => fetchInterviews(true)} disabled={refreshing}
+            className="p-2.5 rounded-xl border border-white/10 bg-white/[0.02] text-slate-400 hover:text-white hover:bg-white/5 transition disabled:opacity-50">
+            <RefreshCw className={`w-4 h-4 transition-transform duration-700 ${refreshing ? "animate-spin" : ""}`} />
           </button>
           <Link href="/recruiter/candidates"
             className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-500 transition">
