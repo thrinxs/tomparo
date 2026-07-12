@@ -186,7 +186,6 @@ function SetupScreen({
   const pace = paceFromSlider(paceValue);
   const isElevenLabs = voiceTier === "elevenlabs";
 
-  // Web Speech voices for fallback
   const [webVoices, setWebVoices] = useState<SpeechSynthesisVoice[]>([]);
   useEffect(() => {
     if (isElevenLabs || interviewType !== "VOICE") return;
@@ -196,10 +195,8 @@ function SetupScreen({
     return () => { window.speechSynthesis.onvoiceschanged = null; };
   }, [isElevenLabs, interviewType]);
 
-  // Update default voice when gender changes (ElevenLabs)
   useEffect(() => {
     if (!isElevenLabs || !defaultVoiceId) return;
-    // Only update if they haven't manually picked one
     if (selectedVoiceId === defaultVoiceId) {
       const genderDefault = gender === "female" ? DEFAULT_FEMALE_VOICE_ID : DEFAULT_MALE_VOICE_ID;
       setSelectedVoiceId(genderDefault);
@@ -249,7 +246,6 @@ function SetupScreen({
           </p>
         </div>
 
-        {/* Type info */}
         <div className={`rounded-2xl border p-4 text-center ${interviewType === "VOICE" ? "border-violet-500/20 bg-violet-500/5" : "border-indigo-500/20 bg-indigo-500/5"}`}>
           {interviewType === "VOICE" ? (
             <>
@@ -269,7 +265,6 @@ function SetupScreen({
           )}
         </div>
 
-        {/* Gender */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-3">
           <div className="flex items-center gap-2">
             <User className="w-4 h-4 text-slate-400" />
@@ -285,7 +280,6 @@ function SetupScreen({
           </div>
         </div>
 
-        {/* DOB */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-3">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-slate-400" />
@@ -300,7 +294,6 @@ function SetupScreen({
           {dobError && <p className="text-xs text-red-400">{dobError}</p>}
         </div>
 
-        {/* Pace Slider (voice only) */}
         {interviewType === "VOICE" && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -340,7 +333,6 @@ function SetupScreen({
           </div>
         )}
 
-        {/* Voice Picker — ElevenLabs (voice only, Business+) */}
         {interviewType === "VOICE" && isElevenLabs && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-3">
             <div className="flex items-center justify-between">
@@ -373,7 +365,6 @@ function SetupScreen({
           </div>
         )}
 
-        {/* Tips (voice only) */}
         {interviewType === "VOICE" && (
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 space-y-1.5">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Tips</p>
@@ -486,7 +477,6 @@ function VoiceCallScreen({
           </div>
         )}
 
-        {/* AI orb */}
         <div className="relative">
           <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 ${isAISpeaking ? "bg-purple-500/30" : isListening ? "bg-indigo-500/20" : "bg-white/5"}`}>
             {isAISpeaking ? <Volume2 className="w-12 h-12 text-purple-400" /> : isListening ? <Mic className="w-12 h-12 text-indigo-400" /> : <VolumeX className="w-12 h-12 text-slate-600" />}
@@ -499,7 +489,6 @@ function VoiceCallScreen({
           )}
         </div>
 
-        {/* Status */}
         <div className="text-center space-y-1">
           {isAISpeaking && (
             <>
@@ -519,7 +508,6 @@ function VoiceCallScreen({
           {!isAISpeaking && !isListening && !transcript && <p className="text-slate-500 text-sm">Preparing...</p>}
         </div>
 
-        {/* Question card */}
         {question && (
           <div className={`w-full rounded-2xl border p-6 ${isFollowUp ? "border-indigo-500/30 bg-indigo-500/5" : "border-white/10 bg-white/[0.02]"}`}>
             {isFollowUp && (
@@ -537,7 +525,6 @@ function VoiceCallScreen({
           </div>
         )}
 
-        {/* Transcript */}
         {transcript && !isAISpeaking && (
           <div className="w-full space-y-3">
             <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-5">
@@ -555,14 +542,12 @@ function VoiceCallScreen({
           </div>
         )}
 
-        {/* Skip */}
         {isListening && !transcript && !isFollowUp && (
           <button onClick={onSkip} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-slate-400 text-xs font-medium hover:text-white transition">
             <SkipForward className="w-3.5 h-3.5" /> Skip this question
           </button>
         )}
 
-        {/* Progress dots */}
         <div className="flex flex-wrap gap-2 justify-center">
           {interview.questions.filter((q: any) => !q.isFollowUp).map((q: any, i: number) => (
             <div key={q.id} className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${q.answered ? "bg-emerald-500/20 text-emerald-400" : q.skipped ? "bg-slate-500/20 text-slate-500" : i === currentIndex ? "bg-purple-500/20 text-purple-400 ring-2 ring-purple-500/40" : "bg-white/5 text-slate-600"}`}>
@@ -647,7 +632,6 @@ function TextInterviewScreen({
 
         {currentQuestion && !currentQuestion.answered && (
           <div className="space-y-4">
-            {/* Main question */}
             <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-8 space-y-6">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
@@ -657,7 +641,6 @@ function TextInterviewScreen({
               </div>
               <p className="text-white text-lg font-medium leading-relaxed">{currentQuestion.question}</p>
 
-              {/* Show answer box only if no follow-up pending */}
               {!justAnswered && !pendingFollowUp && !followUpJustAnswered && (
                 <div className="space-y-4">
                   <textarea
@@ -677,7 +660,6 @@ function TextInterviewScreen({
                 </div>
               )}
 
-              {/* Answer submitted — checking for follow-up */}
               {justAnswered && !pendingFollowUp && !followUpJustAnswered && (
                 <div className="flex items-center gap-3 p-4 rounded-2xl border border-purple-500/20 bg-purple-500/5">
                   <Loader2 className="w-5 h-5 text-purple-400 animate-spin shrink-0" />
@@ -686,7 +668,6 @@ function TextInterviewScreen({
               )}
             </div>
 
-            {/* ── Follow-up question (nested) ── */}
             {pendingFollowUp && !followUpJustAnswered && (
               <div className="rounded-3xl border border-indigo-500/30 bg-indigo-500/5 p-8 space-y-6 ml-4 relative">
                 <div className="absolute -left-4 top-8 w-4 h-0.5 bg-indigo-500/30" />
@@ -714,7 +695,6 @@ function TextInterviewScreen({
               </div>
             )}
 
-            {/* Follow-up answered — move to next */}
             {followUpJustAnswered && (
               <div className="space-y-4">
                 <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 text-center">
@@ -728,7 +708,6 @@ function TextInterviewScreen({
               </div>
             )}
 
-            {/* No follow-up — direct next */}
             {justAnswered && !pendingFollowUp && followUpJustAnswered === false && answer === "" && (
               <div className="space-y-4">
                 <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 text-center">
@@ -743,7 +722,6 @@ function TextInterviewScreen({
           </div>
         )}
 
-        {/* Question list */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
           <p className="text-xs font-semibold text-white uppercase tracking-wider mb-4">All Questions</p>
           <div className="space-y-2">
@@ -776,7 +754,6 @@ function InterviewSession() {
   const [phase, setPhase] = useState<"opening" | "interview" | "closing" | "complete">("opening");
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Voice state
   const [isAISpeaking, setIsAISpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -784,24 +761,20 @@ function InterviewSession() {
   const [confirming, setConfirming] = useState(false);
   const [liveJoined, setLiveJoined] = useState(false);
 
-  // Follow-up state (voice)
   const [isFollowUp, setIsFollowUp] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState<string | null>(null);
   const [followUpQuestionId, setFollowUpQuestionId] = useState<string | null>(null);
   const [checkingFollowUp, setCheckingFollowUp] = useState(false);
 
-  // Follow-up state (text)
   const [pendingFollowUp, setPendingFollowUp] = useState<any | null>(null);
   const [followUpAnswer, setFollowUpAnswer] = useState("");
   const [submittingFollowUp, setSubmittingFollowUp] = useState(false);
   const [followUpJustAnswered, setFollowUpJustAnswered] = useState(false);
 
-  // Text state
   const [textAnswer, setTextAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [justAnswered, setJustAnswered] = useState(false);
 
-  // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -815,7 +788,11 @@ function InterviewSession() {
   const isRepeatingRef = useRef(false);
   const cancelSpeakRef = useRef<(() => void) | null>(null);
 
-  // Settings refs
+  // ── FIX 1: isListeningRef so onend can check if we should restart ──
+  const isListeningRef = useRef(false);
+  // ── FIX 4+5: track last live message so we detect NEW ones ──
+  const lastLiveMessageRef = useRef<string | null>(null);
+
   const genderRef = useRef(gender);
   const speechRateRef = useRef(0.92);
   const voiceIdRef = useRef<string | null>(null);
@@ -834,6 +811,8 @@ function InterviewSession() {
   useEffect(() => { isFollowUpRef.current = isFollowUp; }, [isFollowUp]);
   useEffect(() => { followUpQuestionRef.current = followUpQuestion; }, [followUpQuestion]);
   useEffect(() => { followUpQuestionIdRef.current = followUpQuestionId; }, [followUpQuestionId]);
+  // ── FIX 1: keep isListeningRef in sync ──
+  useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
 
   // ── Load interview ──
   useEffect(() => {
@@ -860,7 +839,7 @@ function InterviewSession() {
     load();
   }, [token]);
 
-  // ── Poll for live ──
+  // ── FIX 4+5: Poll for live — detects first join AND every new liveMessage ──
   useEffect(() => {
     if (!setupDone || !interview || interview.mode !== "ASYNC") return;
     pollRef.current = setInterval(async () => {
@@ -868,11 +847,39 @@ function InterviewSession() {
         const res = await fetch(`/api/interview-session/${token}`);
         const data = await res.json();
         if (!res.ok) return;
+
+        // First time recruiter goes live
         if (data.interview.isLive && !liveJoined) {
           setLiveJoined(true);
           stopListening();
           const msg = data.interview.liveMessage || "Your interviewer has joined and will continue the interview.";
+          lastLiveMessageRef.current = msg;
           doSpeak(msg, () => {});
+          return;
+        }
+
+        // Recruiter sends a NEW live message (already joined)
+        if (data.interview.isLive && data.interview.liveMessage) {
+          const newMsg = data.interview.liveMessage;
+          if (newMsg !== lastLiveMessageRef.current) {
+            lastLiveMessageRef.current = newMsg;
+            stopListening();
+            doSpeak(newMsg, () => {
+              if (interviewRef.current?.interviewType === "VOICE") {
+                startListeningForAnswer();
+              }
+            });
+          }
+        }
+
+        // Recruiter ended live session
+        if (!data.interview.isLive && liveJoined) {
+          setLiveJoined(false);
+          doSpeak("Your interviewer has left. Please continue answering the remaining questions.", () => {
+            if (interviewRef.current?.interviewType === "VOICE") {
+              startListeningForAnswer();
+            }
+          });
         }
       } catch {}
     }, POLL_INTERVAL_MS);
@@ -910,20 +917,25 @@ function InterviewSession() {
     });
   };
 
-  // ── Speak — uses ElevenLabs or Web Speech based on tier ──
+  // ── FIX 2: doSpeak — finish guard prevents double-fire ──
   const doSpeak = useCallback((text: string, onEnd: () => void) => {
     cancelSpeakRef.current?.();
     setIsAISpeaking(true);
-
-    const finish = () => { setIsAISpeaking(false); onEnd(); };
-
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      setIsAISpeaking(false);
+      onEnd();
+    };
     if (voiceTierRef.current === "elevenlabs" && voiceIdRef.current) {
-      speakElevenLabs(text, voiceIdRef.current, finish).then((cancel) => {
-        cancelSpeakRef.current = cancel;
-      }).catch(() => {
-        // Fallback to Web Speech
-        cancelSpeakRef.current = speakWebSpeech(text, genderRef.current, speechRateRef.current, finish);
-      });
+      speakElevenLabs(text, voiceIdRef.current, finish)
+        .then((cancel) => { cancelSpeakRef.current = cancel; })
+        .catch(() => {
+          if (!finished) {
+            cancelSpeakRef.current = speakWebSpeech(text, genderRef.current, speechRateRef.current, finish);
+          }
+        });
     } else {
       cancelSpeakRef.current = speakWebSpeech(text, genderRef.current, speechRateRef.current, finish);
     }
@@ -947,6 +959,7 @@ function InterviewSession() {
     recognitionRef.current = null;
     stopSilenceDetection();
     setIsListening(false);
+    isListeningRef.current = false;
   }, [stopSilenceDetection]);
 
   // ── Check for follow-up (voice mode) ──
@@ -966,15 +979,12 @@ function InterviewSession() {
         setFollowUpQuestionId(data.followUpQuestion.id);
         followUpQuestionRef.current = data.followUpQuestion.question;
         followUpQuestionIdRef.current = data.followUpQuestion.id;
-
-        // Update local interview state with new follow-up question
         setInterview((prev: any) => ({
           ...prev,
           allowFollowUps: data.followUpQuestion ? prev.allowFollowUps : false,
           totalQuestions: prev.totalQuestions + 1,
           questions: [...prev.questions, { ...data.followUpQuestion, answered: false, skipped: false }],
         }));
-
         return true;
       }
       return false;
@@ -1043,11 +1053,12 @@ function InterviewSession() {
               ? followUpQuestionRef.current
               : interviewRef.current?.questions?.filter((q: any) => !q.isFollowUp)[currentIndexRef.current]?.question;
             if (!currentQ) return;
+            // ── FIX 3: do NOT reset isRepeatingRef inside callback ──
+            // isRepeatingRef stays TRUE until skip fires or a real answer arrives
             doSpeak(
               `Let me repeat that. ${currentQ}. I'll move on if I don't receive a response.`,
               () => {
                 repeatTimerRef.current = setTimeout(() => { handleSkipQuestion(); }, skipMs);
-                isRepeatingRef.current = false;
                 startListeningForAnswer();
               }
             );
@@ -1063,7 +1074,7 @@ function InterviewSession() {
     } catch (err) { console.warn("Silence detection not available:", err); }
   }, [doSpeak, stopListening, handleSkipQuestion]);
 
-  // ── Start listening ──
+  // ── FIX 1: Start listening — auto-restart on Chrome onend, fix onerror ──
   const startListeningForAnswer = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
@@ -1072,31 +1083,57 @@ function InterviewSession() {
     recognition.interimResults = false;
     recognition.lang = "en-US";
     let finalTranscript = "";
+
+    // ── FIX 3: cancel repeat timer + reset isRepeatingRef when real answer arrives ──
     recognition.onresult = (event: any) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + " ";
       }
+      if (finalTranscript.trim()) {
+        if (repeatTimerRef.current) { clearTimeout(repeatTimerRef.current); repeatTimerRef.current = null; }
+        isRepeatingRef.current = false;
+        setSilencePhase("none");
+      }
       setTranscript(finalTranscript.trim());
       silenceStartRef.current = null;
-      setSilencePhase("none");
     };
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
+
+    // ── FIX 1: don't stop on no-speech errors ──
+    recognition.onerror = (e: any) => {
+      console.warn("SpeechRecognition error:", e.error);
+      if (e.error === "no-speech" || e.error === "audio-capture") return;
+      setIsListening(false);
+      isListeningRef.current = false;
+    };
+
+    // ── FIX 1: Chrome stops after ~60s or silence — auto-restart ──
+    recognition.onend = () => {
+      if (recognitionRef.current && isListeningRef.current) {
+        try { recognitionRef.current.start(); } catch {}
+        return;
+      }
+      setIsListening(false);
+      isListeningRef.current = false;
+    };
+
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
+    isListeningRef.current = true;
     setTranscript("");
     if (audioStreamRef.current?.active) {
       startSilenceDetection(audioStreamRef.current);
     } else {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => { startSilenceDetection(s); }).catch(() => {});
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => {
+        audioStreamRef.current = s;
+        startSilenceDetection(s);
+      }).catch(() => {});
     }
   }, [startSilenceDetection]);
 
   // ── Submit answer ──
   const submitAnswer = useCallback(async (questionId: string, answer: string) => {
     const iv = interviewRef.current;
-    const idx = currentIndexRef.current;
     try {
       const res = await fetch(`/api/recruiter/interviews/${iv.id}/answer`, {
         method: "POST",
@@ -1135,7 +1172,6 @@ function InterviewSession() {
     const idx = currentIndexRef.current;
     if (!iv) return;
 
-    // Reset follow-up state
     setIsFollowUp(false);
     setFollowUpQuestion(null);
     setFollowUpQuestionId(null);
@@ -1176,7 +1212,6 @@ function InterviewSession() {
     const idx = currentIndexRef.current;
     const mainQuestions = iv.questions.filter((q: any) => !q.isFollowUp);
 
-    // Are we answering a follow-up or main question?
     const currentFollowUp = isFollowUpRef.current;
     const qId = currentFollowUp && followUpQuestionIdRef.current
       ? followUpQuestionIdRef.current
@@ -1188,7 +1223,6 @@ function InterviewSession() {
     if (!ok) { setTranscript(""); return; }
 
     if (currentFollowUp) {
-      // Follow-up answered → proceed to next main question
       setTranscript("");
       setIsFollowUp(false);
       setFollowUpQuestion(null);
@@ -1200,12 +1234,10 @@ function InterviewSession() {
       return;
     }
 
-    // Main question answered → check for follow-up
     const shouldFollowUp = iv.allowFollowUps ? await checkFollowUp(qId, transcript) : false;
     setTranscript("");
 
     if (shouldFollowUp) {
-      // Speak the follow-up question
       const fq = followUpQuestionRef.current;
       if (fq) {
         setIsFollowUp(true);
@@ -1242,20 +1274,11 @@ function InterviewSession() {
     const ok = await submitAnswer(q.id, textAnswer);
     setSubmitting(false);
     if (!ok) return;
-
-    // Check for follow-up
     const shouldFollowUp = iv.allowFollowUps ? await checkFollowUp(q.id, textAnswer) : false;
     setTextAnswer("");
     setJustAnswered(true);
-
-    if (shouldFollowUp && pendingFollowUp === null) {
-      // pendingFollowUp already set by checkFollowUp via state
-    }
-    // Note: checkFollowUp sets followUpQuestion/Id in state
-    // We use pendingFollowUp from interviewRef after the fetch
   }, [textAnswer, submitAnswer, checkFollowUp]);
 
-  // Watch for follow-up being set after text submit
   useEffect(() => {
     if (justAnswered && followUpQuestion && !pendingFollowUp) {
       setPendingFollowUp({ id: followUpQuestionId, question: followUpQuestion });
@@ -1338,7 +1361,7 @@ function InterviewSession() {
         go();
       } else {
         window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.onvoiceschanged = null; go(); };
-        setTimeout(() => { if (phase === "opening") go(); }, 2000);
+        setTimeout(go, 2000);
       }
     } else {
       setPhase("interview");
