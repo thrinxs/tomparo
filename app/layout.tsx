@@ -24,6 +24,17 @@ export const metadata: Metadata = {
     "Get hired faster with AI-powered CV optimization, job matching, interview coaching, and skill gap analysis.",
   keywords:
     "CV builder, job application, AI career, interview preparation, skill gap analysis",
+  icons: {
+    icon: [
+      { url: "/images/favicon_io/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/images/favicon_io/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/images/favicon_io/apple-touch-icon.png",
+    other: [
+      { rel: "android-chrome-192x192", url: "/images/favicon_io/android-chrome-192x192.png" },
+      { rel: "android-chrome-512x512", url: "/images/favicon_io/android-chrome-512x512.png" },
+    ],
+  },
   openGraph: {
     title: "TomParo — AI Career Assistant",
     description:
