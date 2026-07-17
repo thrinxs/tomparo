@@ -10,10 +10,10 @@ interface LogoProps {
 }
 
 const sizeConfig: Record<LogoSize, string> = {
-  sm: "h-8",    // Footer (32px)
-  md: "h-10",   // Sidebar (40px)
-  lg: "h-12",   // Auth header (48px)
-  xl: "h-14",   // Navbar (56px)
+  sm: "h-40",   // Footer (160px)
+  md: "h-48",   // Sidebar (192px)
+  lg: "h-56",   // Auth header (224px)
+  xl: "h-72",   // Navbar (288px)
 };
 
 export default function Logo({

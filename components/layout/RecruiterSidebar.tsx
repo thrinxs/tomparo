@@ -101,8 +101,8 @@ export default function RecruiterSidebar({ isOpen, onClose }: Props) {
     `}>
 
       {/* Logo + close button (mobile) */}
-      <div className="border-b border-white/5 px-4 py-4 flex items-center justify-between">
-        <Logo size="md" href="/recruiter" />
+      <div className="border-b border-white/5 px-3 py-2 flex items-center justify-between">
+        <Logo size="sm" href="/recruiter" />
         <button
           onClick={onClose}
           className="lg:hidden rounded-xl border border-white/10 bg-white/5 p-1.5 text-slate-400 hover:text-white transition"
