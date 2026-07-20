@@ -28,7 +28,7 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-2xl">
       <div className="mx-auto flex h-24 max-w-6xl items-center justify-between px-6">
 
-        <Logo size="xl" />
+        <Logo size="md" />
 
         <nav className="hidden items-center gap-8 md:flex">
           <Link href="/#features" className="text-sm text-slate-400 transition hover:text-white">
