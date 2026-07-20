@@ -1144,14 +1144,15 @@ function TextInterviewScreen({
               </div>
             )}
 
-            {(followUpJustAnswered || (justAnswered && !pendingFollowUp && !followUpJustAnswered && answer === "")) && (
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 text-center space-y-2">
-                <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto" />
-                <p className="text-emerald-400 font-semibold">{followUpJustAnswered ? "Great answer!" : "Answer received!"}</p>
-                <p className="text-slate-400 text-sm">Loading next question...</p>
-                <Loader2 className="w-4 h-4 text-slate-500 animate-spin mx-auto" />
-              </div>
-            )}
+          </div>
+        )}
+
+        {(followUpJustAnswered || (justAnswered && !pendingFollowUp && !followUpJustAnswered)) && (
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 text-center space-y-2">
+            <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto" />
+            <p className="text-emerald-400 font-semibold">{followUpJustAnswered ? "Great answer!" : "Answer received!"}</p>
+            <p className="text-slate-400 text-sm">Loading next question...</p>
+            <Loader2 className="w-4 h-4 text-slate-500 animate-spin mx-auto" />
           </div>
         )}
       </div>
