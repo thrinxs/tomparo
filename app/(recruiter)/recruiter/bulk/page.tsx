@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import Link from "next/link";
 import {
   Upload, FileText, CheckSquare, Square, AlertCircle,
   Loader2, Sparkles, Users, ArrowRight, Crown,
-  CheckCircle, XCircle, BarChart3, Zap,
+  CheckCircle, XCircle, BarChart3, Zap, Briefcase,
+  ChevronRight, Search, PenLine, Filter, Trophy,
+  FileX, Mail, Phone,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { detectDocumentType } from "@/lib/ai/recruiter-cv-analyzer";
 
 interface CVFile {
   id: string;
@@ -16,6 +19,13 @@ interface CVFile {
   size: number;
   text: string;
   error?: string;
+  docType?: {
+    type: string;
+    typeName: string;
+    confidence: number;
+    reason: string;
+  };
+  detecting?: boolean;
 }
 
 interface AnalysisResult {
@@ -26,7 +36,30 @@ interface AnalysisResult {
   error?: string;
 }
 
-type Stage = "upload" | "select" | "analyzing" | "done";
+interface JobPost {
+  id: string;
+  title: string;
+  description: string;
+  requirements: string;
+  location: string;
+  type: string;
+}
+
+interface JobContext {
+  title: string;
+  requirements: string;
+}
+
+type Stage = "upload" | "select" | "job" | "analyzing" | "done";
+
+const DOC_TYPE_CONFIG: Record<string, { color: string; bg: string; border: string; icon: any }> = {
+  CV: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", icon: FileText },
+  COVER_LETTER: { color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20", icon: PenLine },
+  REFERENCE_LETTER: { color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: FileText },
+  TRANSCRIPT: { color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20", icon: FileText },
+  PORTFOLIO: { color: "text-pink-400", bg: "bg-pink-500/10", border: "border-pink-500/20", icon: FileText },
+  OTHER: { color: "text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/20", icon: FileX },
+};
 
 export default function BulkUploadPage() {
   const [stage, setStage] = useState<Stage>("upload");
@@ -41,8 +74,34 @@ export default function BulkUploadPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [error, setError] = useState("");
+  const [detecting, setDetecting] = useState(false);
+  const [detectionProgress, setDetectionProgress] = useState(0);
 
-  // ── Dropzone ──
+  // Job context
+  const [jobPosts, setJobPosts] = useState<JobPost[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [jobMode, setJobMode] = useState<"select" | "manual">("select");
+  const [manualJobTitle, setManualJobTitle] = useState("");
+  const [manualJobRequirements, setManualJobRequirements] = useState("");
+  const [loadingJobs, setLoadingJobs] = useState(false);
+
+  // Top X filter
+  const [topX, setTopX] = useState<number | "">(0);
+  const [showTopX, setShowTopX] = useState(false);
+
+  // Load job posts
+  useEffect(() => {
+    if (stage === "job") {
+      setLoadingJobs(true);
+      fetch("/api/recruiter/jobs?status=ACTIVE")
+        .then((r) => r.json())
+        .then((d) => { setJobPosts(d.jobs || []); })
+        .catch(() => {})
+        .finally(() => setLoadingJobs(false));
+    }
+  }, [stage]);
+
+  // Dropzone
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
@@ -62,33 +121,55 @@ export default function BulkUploadPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        if (data.limitReached) {
-          setError(data.error);
-          return;
-        }
+        if (data.limitReached) { setError(data.error); return; }
         throw new Error(data.error || "Failed to process ZIP");
       }
 
-      setCvFiles(data.cvFiles);
+      const files: CVFile[] = data.cvFiles.map((cv: CVFile) => ({ ...cv, docType: undefined, detecting: false }));
+      setCvFiles(files);
       setRemaining(data.remaining);
       setLimit(data.limit);
       setUsed(data.used);
-
-      // Auto-select up to remaining quota
-      const validCVs = data.cvFiles.filter((cv: CVFile) => cv.text && !cv.error);
-      const autoSelected = new Set<string>(
-        validCVs.slice(0, data.remaining).map((cv: CVFile) => cv.id)
-      );
-      setSelected(autoSelected);
-
       setStage("select");
-      toast.success(`Found ${data.cvFiles.length} CV${data.cvFiles.length !== 1 ? "s" : ""} in ZIP`);
+      toast.success(`Found ${data.cvFiles.length} file${data.cvFiles.length !== 1 ? "s" : ""} in ZIP`);
+
+      // Auto-detect document types
+      runDetection(files, data.remaining);
     } catch (err: any) {
       setError(err.message || "Upload failed");
     } finally {
       setUploading(false);
     }
   }, []);
+
+  const runDetection = async (files: CVFile[], quotaRemaining: number) => {
+    setDetecting(true);
+    setDetectionProgress(0);
+
+    const updated = [...files];
+    for (let i = 0; i < updated.length; i++) {
+      const cv = updated[i];
+      if (!cv.text || cv.error) {
+        updated[i] = { ...cv, docType: { type: "OTHER", typeName: "Unreadable", confidence: 0, reason: "Could not read file" } };
+      } else {
+        try {
+          const detected = await detectDocumentType(cv.text);
+          updated[i] = { ...cv, docType: detected };
+        } catch {
+          updated[i] = { ...cv, docType: { type: "CV", typeName: "CV", confidence: 50, reason: "Detection failed — assuming CV" } };
+        }
+      }
+      setDetectionProgress(Math.round(((i + 1) / updated.length) * 100));
+      setCvFiles([...updated]);
+    }
+
+    // Auto-select only CVs up to quota
+    const cvOnly = updated.filter((cv) => cv.docType?.type === "CV" && cv.text && !cv.error);
+    const autoSelected = new Set<string>(cvOnly.slice(0, quotaRemaining).map((cv) => cv.id));
+    setSelected(autoSelected);
+
+    setDetecting(false);
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -97,42 +178,46 @@ export default function BulkUploadPage() {
     disabled: uploading,
   });
 
-  // ── Select / deselect ──
   const toggleSelect = (id: string) => {
     const cv = cvFiles.find((c) => c.id === id);
-    if (!cv || cv.error || !cv.text) return;
-
+    if (!cv || cv.error || !cv.text || cv.docType?.type !== "CV") return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
       } else {
-        if (next.size >= remaining) {
-          toast.error(`You can only select up to ${remaining} CV${remaining !== 1 ? "s" : ""}`);
-          return prev;
-        }
+        if (next.size >= remaining) { toast.error(`You can only select up to ${remaining} CV${remaining !== 1 ? "s" : ""}`); return prev; }
         next.add(id);
       }
       return next;
     });
   };
 
-  const selectAll = () => {
-    const validCVs = cvFiles.filter((cv) => cv.text && !cv.error);
-    const toSelect = validCVs.slice(0, remaining).map((cv) => cv.id);
-    setSelected(new Set(toSelect));
+  const selectAllCVs = () => {
+    const cvOnly = cvFiles.filter((cv) => cv.docType?.type === "CV" && cv.text && !cv.error);
+    setSelected(new Set(cvOnly.slice(0, remaining).map((cv) => cv.id)));
   };
 
   const deselectAll = () => setSelected(new Set());
 
-  // ── Analyse selected ──
-  const handleAnalyze = async () => {
-    if (selected.size === 0) {
-      toast.error("Select at least one CV");
-      return;
+  const getJobContext = (): JobContext | null => {
+    if (jobMode === "select" && selectedJobId) {
+      const job = jobPosts.find((j) => j.id === selectedJobId);
+      if (job) return { title: job.title, requirements: job.requirements || job.description };
     }
+    if (jobMode === "manual" && manualJobTitle.trim()) {
+      return { title: manualJobTitle.trim(), requirements: manualJobRequirements.trim() };
+    }
+    return null;
+  };
 
+  const handleAnalyze = async () => {
+    if (selected.size === 0) { toast.error("Select at least one CV"); return; }
+
+    const jobContext = getJobContext();
+    const selectedJobPost = selectedJobId ? jobPosts.find((j) => j.id === selectedJobId) : null;
     const selectedCVs = cvFiles.filter((cv) => selected.has(cv.id));
+
     setAnalyzing(true);
     setCurrentIndex(0);
     setStage("analyzing");
@@ -148,11 +233,14 @@ export default function BulkUploadPage() {
         const res = await fetch("/api/recruiter/bulk/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ selectedCVs: [cv] }),
+          body: JSON.stringify({
+            selectedCVs: [cv],
+            jobId: selectedJobPost?.id || null,
+            jobContext: jobContext || null,
+          }),
         });
 
         const data = await res.json();
-
         if (!res.ok) {
           allResults.push({ fileName: cv.fileName, success: false, error: data.error });
         } else {
@@ -162,6 +250,9 @@ export default function BulkUploadPage() {
         allResults.push({ fileName: cv.fileName, success: false, error: "Failed" });
       }
     }
+
+    // Sort by ATS score descending
+    allResults.sort((a, b) => (b.analysis?.atsScore || 0) - (a.analysis?.atsScore || 0));
 
     setResults(allResults);
     setStage("done");
@@ -179,58 +270,67 @@ export default function BulkUploadPage() {
     setError("");
     setCurrentFile("");
     setCurrentIndex(0);
+    setSelectedJobId(null);
+    setManualJobTitle("");
+    setManualJobRequirements("");
+    setTopX(0);
+    setShowTopX(false);
   };
 
-  const validCVCount = cvFiles.filter((cv) => cv.text && !cv.error).length;
+  // Group files by document type
+  const groupedFiles = cvFiles.reduce((acc, cv) => {
+    const type = cv.docType?.type || "DETECTING";
+    if (!acc[type]) acc[type] = [];
+    acc[type].push(cv);
+    return acc;
+  }, {} as Record<string, CVFile[]>);
+
+  const cvCount = groupedFiles["CV"]?.length || 0;
+  const nonCVGroups = Object.entries(groupedFiles).filter(([type]) => type !== "CV" && type !== "DETECTING");
   const canSelectMore = selected.size < remaining;
+
+  // Top X filtered results
+  const displayedResults = showTopX && topX && typeof topX === "number" && topX > 0
+    ? results.slice(0, topX)
+    : results;
+
+  const successfulResults = results.filter((r) => r.success);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-
       {/* Header */}
       <div>
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/10 px-3 py-1 text-xs font-medium text-purple-400">
-          <Sparkles className="h-3 w-3" />
-          Bulk CV Upload
+          <Sparkles className="h-3 w-3" />Bulk CV Upload
         </div>
         <h1 className="text-2xl font-bold text-white">Bulk Upload CVs</h1>
-        <p className="text-slate-400 mt-1">
-          Upload a ZIP file containing multiple CVs. AI will analyse and rank all selected candidates automatically.
-        </p>
+        <p className="text-slate-400 mt-1">Upload a ZIP file containing multiple documents. AI detects document types, groups them, and analyses only CVs.</p>
       </div>
 
-      {/* ── Stage 1: Upload ZIP ── */}
+      {/* Stage 1: Upload */}
       {stage === "upload" && (
         <div className="space-y-6">
           <div
             {...getRootProps()}
             className={`relative cursor-pointer rounded-2xl border-2 border-dashed p-16 text-center transition ${
-              isDragActive
-                ? "border-purple-500 bg-purple-500/5"
-                : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.03]"
+              isDragActive ? "border-purple-500 bg-purple-500/5" : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.03]"
             } ${uploading ? "pointer-events-none opacity-50" : ""}`}
           >
             <input {...getInputProps()} />
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-purple-500/10 ring-1 ring-purple-500/20">
               <Upload className="h-7 w-7 text-purple-400" />
             </div>
-
             {uploading ? (
               <div>
-                <p className="text-base font-medium text-white">Extracting CVs from ZIP...</p>
+                <p className="text-base font-medium text-white">Extracting files from ZIP...</p>
                 <Loader2 className="mx-auto mt-3 h-5 w-5 animate-spin text-purple-400" />
-                <p className="mt-2 text-sm text-slate-500">This may take a moment for large ZIPs</p>
               </div>
             ) : isDragActive ? (
               <p className="text-base font-medium text-purple-400">Drop your ZIP here...</p>
             ) : (
               <>
-                <p className="text-base font-medium text-white">
-                  Drag & drop a ZIP file, or <span className="text-purple-400">browse</span>
-                </p>
-                <p className="mt-2 text-sm text-slate-500">
-                  ZIP containing PDF, DOC, or DOCX files • No size limit
-                </p>
+                <p className="text-base font-medium text-white">Drag & drop a ZIP file, or <span className="text-purple-400">browse</span></p>
+                <p className="mt-2 text-sm text-slate-500">ZIP containing PDF, DOC, or DOCX files · AI auto-detects document types</p>
               </>
             )}
           </div>
@@ -238,242 +338,291 @@ export default function BulkUploadPage() {
           {error && (
             <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-5">
               <AlertCircle className="h-5 w-5 shrink-0 text-red-400 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-white">Upload Failed</p>
-                <p className="text-sm text-red-400 mt-0.5">{error}</p>
-                {error.includes("limit") && (
-                  <Link
-                    href="/recruiter-pricing"
-                    className="mt-3 inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500 transition"
-                  >
-                    <Crown className="w-3.5 h-3.5" />
-                    Upgrade Plan
-                  </Link>
-                )}
-              </div>
+              <p className="text-sm text-red-400">{error}</p>
             </div>
           )}
 
-          {/* How it works */}
           <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6">
             <p className="text-sm font-semibold text-white mb-4">How it works</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               {[
-                { step: "1", icon: Upload, title: "Upload ZIP", desc: "Drag your ZIP file containing all candidate CVs" },
-                { step: "2", icon: CheckSquare, title: "Select CVs", desc: "Choose which CVs to analyse (up to your monthly quota)" },
-                { step: "3", icon: Zap, title: "AI Analyses", desc: "AI scores, ranks, and saves all candidates automatically" },
-              ].map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div key={item.step} className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center shrink-0">
-                      <span className="text-xs font-bold text-purple-400">{item.step}</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-white">{item.title}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
-                    </div>
+                { step: "1", title: "Upload ZIP", desc: "Drag your ZIP with all candidate documents" },
+                { step: "2", title: "AI Detects Types", desc: "AI identifies CVs, cover letters, etc. and groups them" },
+                { step: "3", title: "Set Job Context", desc: "Pick a job post so AI scores candidates for that role" },
+                { step: "4", title: "AI Analyses", desc: "AI scores, ranks candidates. Filter to top X." },
+              ].map((item) => (
+                <div key={item.step} className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center shrink-0">
+                    <span className="text-xs font-bold text-purple-400">{item.step}</span>
                   </div>
-                );
-              })}
+                  <div>
+                    <p className="text-sm font-medium text-white">{item.title}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Stage 2: Select CVs ── */}
+      {/* Stage 2: Select (with document type grouping) */}
       {stage === "select" && (
         <div className="space-y-6">
+          {/* Detection progress */}
+          {detecting && (
+            <div className="rounded-2xl border border-purple-500/20 bg-purple-500/5 p-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
+                <p className="text-sm font-semibold text-white">AI is detecting document types... {detectionProgress}%</p>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-white/5">
+                <div className="h-1.5 rounded-full bg-purple-500 transition-all" style={{ width: `${detectionProgress}%` }} />
+              </div>
+              <p className="text-xs text-slate-500">Analysing each file to identify CVs, cover letters, and other documents</p>
+            </div>
+          )}
 
           {/* Quota info */}
           <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-white">
-                  Found {cvFiles.length} CV{cvFiles.length !== 1 ? "s" : ""} in ZIP
-                </p>
+                <p className="text-sm font-semibold text-white">Found {cvFiles.length} file{cvFiles.length !== 1 ? "s" : ""} in ZIP</p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  You can analyse up to{" "}
-                  <span className="text-purple-400 font-semibold">{remaining}</span> more CV
-                  {remaining !== 1 ? "s" : ""} this month
+                  <span className="text-emerald-400 font-semibold">{cvCount} CVs</span> detected ·{" "}
+                  You can analyse up to <span className="text-purple-400 font-semibold">{remaining}</span> more this month
                 </p>
               </div>
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <span className="text-purple-400">{selected.size}</span>
-                <span className="text-slate-500">/ {Math.min(remaining, validCVCount)} selected</span>
+                <span className="text-slate-500">/ {Math.min(remaining, cvCount)} selected</span>
               </div>
             </div>
-
-            {/* Usage bar */}
             <div className="mt-4">
               <div className="h-1.5 w-full rounded-full bg-white/5">
-                <div
-                  className="h-1.5 rounded-full bg-purple-500 transition-all"
-                  style={{ width: `${limit > 0 ? Math.min(100, ((used + selected.size) / limit) * 100) : 0}%` }}
-                />
+                <div className="h-1.5 rounded-full bg-purple-500 transition-all" style={{ width: `${limit > 0 ? Math.min(100, ((used + selected.size) / limit) * 100) : 0}%` }} />
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                {used + selected.size} / {limit} CVs used this month
-              </p>
-            </div>
-
-            {/* Upgrade CTA if they have more CVs than quota */}
-            {cvFiles.length > remaining && (
-              <div className="mt-4 flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                <p className="text-xs text-amber-300">
-                  <span className="font-semibold">{cvFiles.length - remaining} CVs</span> can't be analysed with your current plan
-                </p>
-                <Link
-                  href="/recruiter-pricing"
-                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/30 transition"
-                >
-                  <Crown className="w-3 h-3" />
-                  Upgrade
-                </Link>
-              </div>
-            )}
-          </div>
-
-          {/* Select all / deselect all */}
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-white">Select CVs to Analyse</p>
-            <div className="flex gap-2">
-              <button
-                onClick={selectAll}
-                className="px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-medium hover:bg-purple-500/20 transition"
-              >
-                Select All ({Math.min(remaining, validCVCount)})
-              </button>
-              <button
-                onClick={deselectAll}
-                className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-xs font-medium hover:bg-white/10 transition"
-              >
-                Deselect All
-              </button>
+              <p className="text-xs text-slate-500 mt-1">{used + selected.size} / {limit} CVs used this month</p>
             </div>
           </div>
 
-          {/* CV List */}
-          <div className="space-y-2">
-            {cvFiles.map((cv) => {
-              const isSelected = selected.has(cv.id);
-              const hasError = !!cv.error || !cv.text;
-              const isDisabled = hasError || (!isSelected && !canSelectMore);
-
-              return (
-                <div
-                  key={cv.id}
-                  onClick={() => !isDisabled && toggleSelect(cv.id)}
-                  className={`flex items-center gap-4 rounded-xl border p-4 transition ${
-                    hasError
-                      ? "border-red-500/20 bg-red-500/5 cursor-not-allowed opacity-60"
-                      : isSelected
-                      ? "border-purple-500/30 bg-purple-500/10 cursor-pointer"
-                      : isDisabled
-                      ? "border-white/5 bg-white/[0.01] cursor-not-allowed opacity-50"
-                      : "border-white/10 bg-white/[0.02] cursor-pointer hover:border-white/20"
-                  }`}
-                >
-                  {/* Checkbox */}
-                  <div className="shrink-0">
-                    {hasError ? (
-                      <XCircle className="w-5 h-5 text-red-400" />
-                    ) : isSelected ? (
-                      <CheckSquare className="w-5 h-5 text-purple-400" />
-                    ) : (
-                      <Square className="w-5 h-5 text-slate-600" />
-                    )}
-                  </div>
-
-                  {/* File icon */}
-                  <div className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                    <FileText className={`w-4 h-4 ${hasError ? "text-red-400" : "text-slate-400"}`} />
-                  </div>
-
-                  {/* File info */}
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${hasError ? "text-red-300" : "text-white"}`}>
-                      {cv.fileName}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {hasError
-                        ? cv.error
-                        : `${(cv.size / 1024).toFixed(1)} KB · ${cv.text.length.toLocaleString()} chars`}
-                    </p>
-                  </div>
-
-                  {/* Selected badge */}
-                  {isSelected && (
-                    <span className="shrink-0 px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-xs font-medium">
-                      Selected
-                    </span>
-                  )}
+          {/* CV Group */}
+          {(groupedFiles["CV"]?.length > 0 || detecting) && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  CVs / Resumes ({cvCount})
+                </h3>
+                <div className="flex gap-2">
+                  <button onClick={selectAllCVs} className="px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-medium hover:bg-purple-500/20 transition">
+                    Select All ({Math.min(remaining, cvCount)})
+                  </button>
+                  <button onClick={deselectAll} className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-xs font-medium hover:bg-white/10 transition">
+                    Deselect All
+                  </button>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+              <div className="space-y-2">
+                {groupedFiles["CV"]?.map((cv) => {
+                  const isSelected = selected.has(cv.id);
+                  const isDisabled = !isSelected && !canSelectMore;
+                  return (
+                    <div key={cv.id} onClick={() => !isDisabled && toggleSelect(cv.id)}
+                      className={`flex items-center gap-4 rounded-xl border p-4 transition cursor-pointer ${
+                        isSelected ? "border-purple-500/30 bg-purple-500/10" : isDisabled ? "border-white/5 bg-white/[0.01] opacity-50 cursor-not-allowed" : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                      }`}>
+                      <div className="shrink-0">
+                        {isSelected ? <CheckSquare className="w-5 h-5 text-purple-400" /> : <Square className="w-5 h-5 text-slate-600" />}
+                      </div>
+                      <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{cv.fileName}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{(cv.size / 1024).toFixed(1)} KB · {cv.text.length.toLocaleString()} chars</p>
+                      </div>
+                      {isSelected && <span className="shrink-0 px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-xs font-medium">Selected</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Non-CV Groups */}
+          {!detecting && nonCVGroups.length > 0 && (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">Other Documents (not included in analysis)</p>
+              {nonCVGroups.map(([type, files]) => {
+                const config = DOC_TYPE_CONFIG[type] || DOC_TYPE_CONFIG["OTHER"];
+                const Icon = config.icon;
+                return (
+                  <div key={type} className={`rounded-2xl border ${config.border} ${config.bg} p-4 space-y-3`}>
+                    <h3 className={`text-sm font-semibold flex items-center gap-2 ${config.color}`}>
+                      <Icon className="w-4 h-4" />
+                      {type === "COVER_LETTER" ? "Cover Letters" :
+                       type === "REFERENCE_LETTER" ? "Reference Letters" :
+                       type === "TRANSCRIPT" ? "Academic Transcripts" :
+                       type === "PORTFOLIO" ? "Portfolios" : "Other Documents"} ({files.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      {files.map((cv) => (
+                        <div key={cv.id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-black/20">
+                          <Icon className={`w-3.5 h-3.5 ${config.color} shrink-0`} />
+                          <p className="text-sm text-slate-300 truncate flex-1">{cv.fileName}</p>
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${config.bg} ${config.color}`}>
+                            {cv.docType?.typeName || type}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-4">
-            <button
-              onClick={handleAnalyze}
-              disabled={selected.size === 0}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition disabled:opacity-50"
-            >
-              <Zap className="w-4 h-4" />
-              Analyse {selected.size} Selected CV{selected.size !== 1 ? "s" : ""} with AI
+            <button onClick={() => setStage("job")} disabled={selected.size === 0 || detecting}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition disabled:opacity-50">
+              {detecting ? <><Loader2 className="w-4 h-4 animate-spin" />Detecting types...</> : <><ChevronRight className="w-4 h-4" />Continue with {selected.size} CV{selected.size !== 1 ? "s" : ""}</>}
             </button>
-            <button
-              onClick={resetAll}
-              className="px-6 py-4 rounded-xl border border-white/10 bg-white/5 text-white font-semibold hover:bg-white/10 transition"
-            >
+            <button onClick={resetAll} className="px-6 py-4 rounded-xl border border-white/10 bg-white/5 text-white font-semibold hover:bg-white/10 transition">
               Start Over
             </button>
           </div>
         </div>
       )}
 
-      {/* ── Stage 3: Analyzing ── */}
+      {/* Stage 3: Job Context */}
+      {stage === "job" && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-xl font-bold text-white">Set Job Context</h2>
+            <p className="text-slate-400 text-sm mt-1">AI will score each CV specifically against this role for more accurate results.</p>
+          </div>
+
+          {/* Mode toggle */}
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => setJobMode("select")}
+              className={`p-4 rounded-2xl border text-left transition ${jobMode === "select" ? "border-purple-500/40 bg-purple-500/10" : "border-white/10 bg-white/[0.02] hover:border-white/20"}`}>
+              <Briefcase className={`w-5 h-5 mb-2 ${jobMode === "select" ? "text-purple-400" : "text-slate-400"}`} />
+              <p className={`text-sm font-semibold ${jobMode === "select" ? "text-white" : "text-slate-300"}`}>Select Job Post</p>
+              <p className="text-xs text-slate-500 mt-0.5">Choose from your active job postings</p>
+            </button>
+            <button onClick={() => setJobMode("manual")}
+              className={`p-4 rounded-2xl border text-left transition ${jobMode === "manual" ? "border-purple-500/40 bg-purple-500/10" : "border-white/10 bg-white/[0.02] hover:border-white/20"}`}>
+              <PenLine className={`w-5 h-5 mb-2 ${jobMode === "manual" ? "text-purple-400" : "text-slate-400"}`} />
+              <p className={`text-sm font-semibold ${jobMode === "manual" ? "text-white" : "text-slate-300"}`}>Enter Manually</p>
+              <p className="text-xs text-slate-500 mt-0.5">Type in the job title and requirements</p>
+            </button>
+          </div>
+
+          {/* Select from job posts */}
+          {jobMode === "select" && (
+            <div className="space-y-3">
+              {loadingJobs ? (
+                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" />Loading your job posts...
+                </div>
+              ) : jobPosts.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 text-center space-y-3">
+                  <Briefcase className="w-8 h-8 text-slate-500 mx-auto" />
+                  <p className="text-sm text-slate-400">No active job posts found.</p>
+                  <button onClick={() => setJobMode("manual")} className="text-xs text-purple-400 hover:text-purple-300 transition">Enter job details manually →</button>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {jobPosts.map((job) => (
+                    <div key={job.id} onClick={() => setSelectedJobId(job.id)}
+                      className={`p-4 rounded-xl border cursor-pointer transition ${selectedJobId === job.id ? "border-purple-500/40 bg-purple-500/10" : "border-white/10 bg-white/[0.02] hover:border-white/20"}`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{job.title}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">{job.location} · {job.type}</p>
+                        </div>
+                        {selectedJobId === job.id && <CheckCircle className="w-4 h-4 text-purple-400 shrink-0" />}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Manual input */}
+          {jobMode === "manual" && (
+            <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div>
+                <label className="text-xs text-slate-500 mb-1.5 block">Job Title *</label>
+                <input value={manualJobTitle} onChange={(e) => setManualJobTitle(e.target.value)}
+                  placeholder="e.g. Senior Product Designer"
+                  className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 transition" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1.5 block">Key Requirements</label>
+                <textarea value={manualJobRequirements} onChange={(e) => setManualJobRequirements(e.target.value)}
+                  placeholder="List the key skills, experience, and qualifications required for this role..."
+                  rows={5}
+                  className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 resize-none transition" />
+              </div>
+            </div>
+          )}
+
+          {/* Skip option */}
+          <p className="text-xs text-slate-500 text-center">
+            No job context?{" "}
+            <button onClick={handleAnalyze} className="text-slate-400 hover:text-white transition underline underline-offset-2">
+              Skip and analyse without role context
+            </button>
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button onClick={() => setStage("select")}
+              className="px-6 py-4 rounded-xl border border-white/10 bg-white/5 text-white font-semibold hover:bg-white/10 transition">
+              ← Back
+            </button>
+            <button onClick={handleAnalyze}
+              disabled={(jobMode === "select" && !selectedJobId) || (jobMode === "manual" && !manualJobTitle.trim())}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition disabled:opacity-50">
+              <Zap className="w-4 h-4" />
+              Analyse {selected.size} CV{selected.size !== 1 ? "s" : ""} with AI
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Stage 4: Analyzing */}
       {stage === "analyzing" && (
         <div className="rounded-2xl border border-purple-500/20 bg-purple-500/5 p-10 text-center space-y-6">
           <div className="relative flex h-24 w-24 items-center justify-center mx-auto">
             <svg className="absolute -rotate-90" width="96" height="96" viewBox="0 0 96 96">
               <circle cx="48" cy="48" r="40" stroke="rgb(30 41 59)" strokeWidth="6" fill="none" />
-              <circle
-                cx="48" cy="48" r="40"
-                strokeWidth="6" fill="none" strokeLinecap="round"
+              <circle cx="48" cy="48" r="40" strokeWidth="6" fill="none" strokeLinecap="round"
                 strokeDasharray={2 * Math.PI * 40}
                 strokeDashoffset={2 * Math.PI * 40 - (currentIndex / selected.size) * (2 * Math.PI * 40)}
-                className="stroke-purple-500 transition-all duration-500"
-              />
+                className="stroke-purple-500 transition-all duration-500" />
             </svg>
             <div className="text-center">
               <p className="text-xl font-bold text-white">{currentIndex}</p>
               <p className="text-xs text-slate-500">of {selected.size}</p>
             </div>
           </div>
-
           <div>
             <h3 className="text-lg font-semibold text-white">Analysing CVs with AI</h3>
-            <p className="text-sm text-slate-400 mt-1">
-              Currently analysing: <span className="text-purple-400">{currentFile}</span>
-            </p>
+            <p className="text-sm text-slate-400 mt-1">Currently analysing: <span className="text-purple-400">{currentFile}</span></p>
           </div>
-
           <div className="w-full rounded-full bg-white/5 h-2">
-            <div
-              className="h-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
-              style={{ width: `${(currentIndex / selected.size) * 100}%` }}
-            />
+            <div className="h-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+              style={{ width: `${(currentIndex / selected.size) * 100}%` }} />
           </div>
-
-          <p className="text-xs text-slate-500">
-            Please wait — AI is scoring, ranking, and saving each candidate
-          </p>
+          <p className="text-xs text-slate-500">Please wait — AI is scoring and ranking each candidate</p>
         </div>
       )}
 
-      {/* ── Stage 4: Done ── */}
+      {/* Stage 5: Done */}
       {stage === "done" && (
         <div className="space-y-6">
           {/* Summary */}
@@ -484,12 +633,9 @@ export default function BulkUploadPage() {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-white">Analysis Complete!</h3>
-                <p className="text-sm text-slate-400">
-                  {results.filter((r) => r.success).length} of {results.length} CVs analysed successfully
-                </p>
+                <p className="text-sm text-slate-400">{results.filter((r) => r.success).length} of {results.length} CVs analysed · Ranked by ATS score</p>
               </div>
             </div>
-
             <div className="grid grid-cols-3 gap-4">
               {[
                 { label: "Analysed", value: results.filter((r) => r.success).length, color: "text-emerald-400" },
@@ -504,52 +650,103 @@ export default function BulkUploadPage() {
             </div>
           </div>
 
+          {/* Top X Filter */}
+          {successfulResults.length > 1 && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <Filter className="w-4 h-4 text-purple-400" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">Filter Top Candidates</p>
+                    <p className="text-xs text-slate-500">Show only the highest ranked applicants</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-400">Show top</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={successfulResults.length}
+                      value={topX}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setTopX(isNaN(val) ? "" : Math.min(val, successfulResults.length));
+                      }}
+                      placeholder="e.g. 5"
+                      className="w-20 rounded-xl border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-white text-center outline-none focus:border-purple-500/50 transition"
+                    />
+                    <span className="text-sm text-slate-400">candidates</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!topX || typeof topX !== "number" || topX <= 0) { toast.error("Enter a valid number"); return; }
+                      setShowTopX(true);
+                      toast.success(`Showing top ${topX} candidates`);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold transition"
+                  >
+                    Apply
+                  </button>
+                  {showTopX && (
+                    <button onClick={() => { setShowTopX(false); setTopX(0); }}
+                      className="px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-slate-400 text-sm font-medium hover:text-white transition">
+                      Show All
+                    </button>
+                  )}
+                </div>
+              </div>
+              {showTopX && topX && (
+                <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                  <Trophy className="w-3.5 h-3.5 text-purple-400" />
+                  <p className="text-xs text-purple-300">Showing top {topX} out of {successfulResults.length} candidates by ATS score</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Results list */}
           <div className="space-y-2">
-            {results.map((result, i) => (
-              <div
-                key={i}
+            {displayedResults.map((result, i) => (
+              <div key={i}
                 className={`flex items-center justify-between gap-4 rounded-xl border p-4 ${
-                  result.success
-                    ? "border-emerald-500/20 bg-emerald-500/5"
-                    : "border-red-500/20 bg-red-500/5"
-                }`}
-              >
-                <div className="flex items-center gap-3">
+                  result.success ? "border-emerald-500/20 bg-emerald-500/5" : "border-red-500/20 bg-red-500/5"
+                }`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center shrink-0">
+                    <span className="text-xs font-bold text-slate-400">#{i + 1}</span>
+                  </div>
                   {result.success ? (
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
                     <XCircle className="w-4 h-4 text-red-400 shrink-0" />
                   )}
-                  <div>
-                    <p className="text-sm font-medium text-white">{result.fileName}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white truncate">
+                      {result.success && result.analysis?.candidateName ? result.analysis.candidateName : result.fileName}
+                    </p>
                     {result.success && result.analysis && (
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {result.analysis.candidateName || "Unknown"} ·
-                        ATS {result.analysis.atsScore}/100 ·{" "}
-                        <span className={
+                      <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                        <span className="text-xs text-slate-400">ATS <span className="text-white font-medium">{result.analysis.atsScore}/100</span></span>
+                        <span className={`text-xs font-medium ${
                           result.analysis.hiringRecommendation === "Strong Hire" ? "text-emerald-400" :
                           result.analysis.hiringRecommendation === "Hire" ? "text-blue-400" :
-                          result.analysis.hiringRecommendation === "Maybe" ? "text-amber-400" :
-                          "text-red-400"
-                        }>
-                          {result.analysis.hiringRecommendation}
-                        </span>
-                      </p>
+                          result.analysis.hiringRecommendation === "Maybe" ? "text-amber-400" : "text-red-400"
+                        }`}>{result.analysis.hiringRecommendation}</span>
+                        {result.analysis.candidateEmail && (
+                          <span className="text-xs text-slate-500 flex items-center gap-1">
+                            <Mail className="w-3 h-3" />{result.analysis.candidateEmail}
+                          </span>
+                        )}
+                      </div>
                     )}
-                    {!result.success && (
-                      <p className="text-xs text-red-400 mt-0.5">{result.error}</p>
-                    )}
+                    {!result.success && <p className="text-xs text-red-400 mt-0.5">{result.error}</p>}
                   </div>
                 </div>
-
                 {result.success && result.candidateId && (
-                  <Link
-                    href={`/recruiter/candidates/${result.candidateId}`}
-                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-medium hover:bg-purple-500/20 transition"
-                  >
-                    View
-                    <ArrowRight className="w-3 h-3" />
+                  <Link href={`/recruiter/candidates/${result.candidateId}`}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-medium hover:bg-purple-500/20 transition">
+                    View <ArrowRight className="w-3 h-3" />
                   </Link>
                 )}
               </div>
@@ -558,19 +755,13 @@ export default function BulkUploadPage() {
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row gap-4">
-            <Link
-              href="/recruiter/candidates"
-              className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition"
-            >
-              <Users className="w-4 h-4" />
-              View All Candidates
+            <Link href="/recruiter/candidates"
+              className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-500 transition">
+              <Users className="w-4 h-4" />View All Candidates
             </Link>
-            <button
-              onClick={resetAll}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl border border-white/10 bg-white/5 text-white font-semibold hover:bg-white/10 transition"
-            >
-              <Upload className="w-4 h-4" />
-              Upload Another ZIP
+            <button onClick={resetAll}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl border border-white/10 bg-white/5 text-white font-semibold hover:bg-white/10 transition">
+              <Upload className="w-4 h-4" />Upload Another ZIP
             </button>
           </div>
         </div>

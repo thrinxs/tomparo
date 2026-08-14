@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { resumeText, fileName, jobId } = await req.json();
+    const { resumeText, fileName, jobId, jobContext } = await req.json();
 
     if (!resumeText || typeof resumeText !== "string") {
       return NextResponse.json(
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const analysis = await analyzeRecruiterCV(cleaned);
+    const analysis = await analyzeRecruiterCV(cleaned, jobContext || undefined);
 
     const candidate = await prisma.recruiterCandidate.create({
       data: {
@@ -119,6 +119,8 @@ export async function POST(req: NextRequest) {
       where: { id: profile.id },
       data: { cvsUsedThisMonth: { increment: 1 } },
     });
+
+    await logActivity(profile.id, "CV_UPLOADED", "CV Analysed", `${analysis.candidateName || fileName} analysed`);
 
     return NextResponse.json({
       success: true,

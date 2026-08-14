@@ -1,8 +1,67 @@
 import { generateJSONWithGemini } from "@/lib/gemini";
 
-export async function analyzeRecruiterCV(resumeText: string): Promise<any> {
-  const prompt = `You are an expert recruiter and talent acquisition specialist. Analyse this candidate's CV and provide a detailed hiring assessment.
+export interface JobContext {
+  title: string;
+  requirements: string;
+}
 
+export interface DocumentDetection {
+  type: "CV" | "COVER_LETTER" | "REFERENCE_LETTER" | "TRANSCRIPT" | "PORTFOLIO" | "OTHER";
+  typeName: string;
+  confidence: number;
+  reason: string;
+}
+
+export async function detectDocumentType(text: string): Promise<DocumentDetection> {
+  const prompt = `You are a document classification expert. Analyse the following document text and identify what type of document it is.
+
+DOCUMENT TEXT (first 3000 characters):
+${text.slice(0, 3000)}
+
+Return ONLY valid JSON in this exact format:
+{
+  "type": "CV",
+  "typeName": "Curriculum Vitae",
+  "confidence": 95,
+  "reason": "Document contains work experience, education, skills sections typical of a CV"
+}
+
+The type MUST be one of exactly these values:
+- "CV" — A resume or curriculum vitae listing work experience, education, skills
+- "COVER_LETTER" — A letter of application addressed to an employer
+- "REFERENCE_LETTER" — A letter written by someone else recommending a candidate
+- "TRANSCRIPT" — An academic transcript showing grades/courses
+- "PORTFOLIO" — A portfolio of work samples
+- "OTHER" — Any other document type
+
+confidence is a number 0-100 representing how confident you are.`;
+
+  try {
+    const result = await generateJSONWithGemini<DocumentDetection>(prompt, "general");
+    return result;
+  } catch {
+    return {
+      type: "OTHER",
+      typeName: "Unknown Document",
+      confidence: 0,
+      reason: "Could not determine document type",
+    };
+  }
+}
+
+export async function analyzeRecruiterCV(resumeText: string, jobContext?: JobContext): Promise<any> {
+  const jobSection = jobContext
+    ? `
+JOB CONTEXT — Score this candidate specifically against this role:
+Job Title: ${jobContext.title}
+Key Requirements: ${jobContext.requirements}
+
+When scoring, prioritise how well the candidate matches the above role requirements.
+`
+    : "";
+
+  const prompt = `You are an expert recruiter and talent acquisition specialist. Analyse this candidate's CV and provide a detailed hiring assessment.
+${jobSection}
 CV TEXT:
 ${resumeText.slice(0, 8000)}
 

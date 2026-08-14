@@ -25,7 +25,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── CV limits ──
     const cvLimits: Record<string, number> = {
       FREE: 2,
       RECRUITER_STARTER: 20,
@@ -39,7 +38,6 @@ export async function POST(req: NextRequest) {
 
     const limit = cvLimits[role] ?? 0;
 
-    // Reset monthly if needed
     const now = new Date();
     const resetDate = new Date(profile.cvsResetDate);
     const monthDiff =
@@ -56,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     const remaining = Math.max(0, limit - profile.cvsUsedThisMonth);
 
-    const { selectedCVs, jobId } = await req.json();
+    const { selectedCVs, jobId, jobContext } = await req.json();
 
     if (!selectedCVs || !Array.isArray(selectedCVs) || selectedCVs.length === 0) {
       return NextResponse.json(
@@ -76,7 +74,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Analyse each selected CV ──
     const results: {
       fileName: string;
       success: boolean;
@@ -87,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     for (const cv of selectedCVs) {
       try {
-        const analysis = await analyzeRecruiterCV(cv.text);
+        const analysis = await analyzeRecruiterCV(cv.text, jobContext || undefined);
 
         const candidate = await prisma.recruiterCandidate.create({
           data: {
