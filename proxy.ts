@@ -144,6 +144,8 @@ if (pathname.startsWith("/api/track")) {
 }
 
   // ── Dashboard routes ───────────────────────────────────────────────────────
+  if (pathname.startsWith("/portfolio/")) return NextResponse.next();
+
   if (pathname.startsWith("/dashboard")) {
     // Safety net — recruiters should never land on job seeker dashboard
     if (
