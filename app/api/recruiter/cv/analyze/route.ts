@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       data: { cvsUsedThisMonth: { increment: 1 } },
     });
 
-    await logActivity(profile.id, "CV_UPLOADED", "CV Analysed", `${analysis.candidateName || fileName} analysed`);
+    await logActivity({ recruiterId: profile.id, type: "CV_UPLOADED", title: "CV Analysed", description: `${analysis.candidateName || fileName} analysed` });
 
     return NextResponse.json({
       success: true,
