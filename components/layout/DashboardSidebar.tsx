@@ -7,7 +7,7 @@ import { useSession } from "next-auth/react";
 import {
   LayoutDashboard, FileText, Target, Mail, TrendingUp,
   MessageSquareText, Brain, MessageCircle, Inbox,
-  History, Settings, Lock, Crown, Zap, X,
+  History, Settings, Lock, Crown, Zap, X, User,
 } from "lucide-react";
 
 interface NavItem {
@@ -27,7 +27,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard/career", label: "Career AI", icon: Brain, premium: true },
   { href: "/dashboard/chat", label: "AI Chat", icon: MessageCircle, premium: true },
   { href: "/dashboard/messages", label: "Messages", icon: Inbox, premium: true },
-  { href: "/dashboard/portfolio", label: "Portfolio", icon: "User" },
+  { href: "/dashboard/portfolio", label: "Portfolio", icon: User },
     { href: "/dashboard/history", label: "History", icon: History },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
