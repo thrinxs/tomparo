@@ -147,6 +147,7 @@ if (pathname.startsWith("/api/track")) {
   if (pathname.startsWith("/portfolio/")) return NextResponse.next();
 
   if (pathname.startsWith("/dashboard")) {
+    if (!token) return NextResponse.redirect(new URL("/signin", request.url));
     // Safety net — recruiters should never land on job seeker dashboard
     if (
       token &&
