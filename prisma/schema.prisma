@@ -283,7 +283,6 @@ model JobPosting {
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  verification    CvVerification?
 }
 
 model RecruiterCandidate {
@@ -312,6 +311,7 @@ model RecruiterCandidate {
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  verification    CvVerification?
 }
 
 model RecruiterEmail {
