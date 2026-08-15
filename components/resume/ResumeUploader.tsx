@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 interface ResumeUploaderProps {
-  onAnalyze: (text: string, fileName?: string) => void;
+  onAnalyze: (text: string, fileName?: string, file?: File | null) => void;
   isAnalyzing?: boolean;
 }
 
@@ -98,7 +98,7 @@ export default function ResumeUploader({
       return;
     }
 
-    onAnalyze(text, file?.name);
+    onAnalyze(text, file?.name, mode === "upload" ? file : null);
   };
 
   const canAnalyze =

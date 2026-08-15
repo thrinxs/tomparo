@@ -232,7 +232,8 @@ model RecruiterProfile {
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  documentBatches DocumentBatch[]
+  documentBatches  DocumentBatch[]
+  cvVerifications  CvVerification[]
 }
 
 // ── Global Interview Message Template ─────────────────────────────────────────
@@ -282,6 +283,7 @@ model JobPosting {
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  verification    CvVerification?
 }
 
 model RecruiterCandidate {
@@ -295,6 +297,7 @@ model RecruiterCandidate {
   job             JobPosting? @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
   fileName        String
+  cvFileUrl      String?   @db.Text
   rawText         String    @db.Text
 
   candidateName   String?
@@ -702,4 +705,39 @@ model DocumentFile {
   createdAt    DateTime       @default(now())
   batch        DocumentBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
   group        DocumentGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+}
+
+model CvVerification {
+  id               String   @id @default(cuid())
+  candidateId      String   @unique
+  recruiterId      String
+  credibilityScore Int      @default(0)
+  flags            String?  @db.Text
+  overallTrustScore Int     @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  candidate        RecruiterCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  recruiter        RecruiterProfile   @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  entities         CvVerifiableEntity[]
+}
+
+model CvVerifiableEntity {
+  id              String    @id @default(cuid())
+  verificationId  String
+  candidateId     String
+  recruiterId     String
+  type            String
+  name            String
+  claimedDetail   String?   @db.Text
+  suggestedEmails String?   @db.Text
+  contactEmail    String?
+  contactName     String?
+  status          String    @default("PENDING")
+  emailId         String?
+  sentAt          DateTime?
+  respondedAt     DateTime?
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  verification    CvVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
 }

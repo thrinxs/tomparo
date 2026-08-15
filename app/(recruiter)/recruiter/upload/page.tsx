@@ -42,6 +42,7 @@ export default function RecruiterUploadPage() {
   const [stage, setStage] = useState<"upload" | "job" | "analyzing" | "result">("upload");
   const [pendingText, setPendingText] = useState("");
   const [pendingFileName, setPendingFileName] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [detectedDocType, setDetectedDocType] = useState<any>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -122,9 +123,10 @@ export default function RecruiterUploadPage() {
     return () => clearTimeout(t);
   }, [selectedJobId, manualJobTitle, manualJobRequirements, jobMode, jobPosts]);
 
-  const handleFileReady = async (text: string, fileName?: string) => {
+  const handleFileReady = async (text: string, fileName?: string, file?: File | null) => {
     setPendingText(text);
     setPendingFileName(fileName || "");
+    setPendingFile(file || null);
     setIsDetecting(true);
     setError("");
 
@@ -175,15 +177,17 @@ export default function RecruiterUploadPage() {
     setCurrentStep(0);
 
     try {
+      // Send as FormData so we can include the actual file for storage
+      const formData = new FormData();
+      formData.append("resumeText", pendingText);
+      formData.append("fileName", pendingFileName);
+      if (selectedJobPost?.id) formData.append("jobId", selectedJobPost.id);
+      if (jobContext) formData.append("jobContext", JSON.stringify(jobContext));
+      if (pendingFile) formData.append("file", pendingFile);
+
       const response = await fetch("/api/recruiter/cv/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          resumeText: pendingText,
-          fileName: pendingFileName,
-          jobId: selectedJobPost?.id || null,
-          jobContext: jobContext || null,
-        }),
+        body: formData,
       });
 
       const data = await response.json();
@@ -213,6 +217,7 @@ export default function RecruiterUploadPage() {
     setStage("upload");
     setPendingText("");
     setPendingFileName("");
+    setPendingFile(null);
     setDetectedDocType(null);
     setAnalysis(null);
     setCandidateId(null);
