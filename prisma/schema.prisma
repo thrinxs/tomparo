@@ -32,6 +32,11 @@ model User {
   chatConversations ChatConversation[]
   teamMemberships RecruiterTeamMember[]
   portfolio    Portfolio?
+  teamMessages      TeamMessage[]
+  tasksAssigned     TeamTask[]        @relation("TaskAssignee")
+  tasksCreated      TeamTask[]        @relation("TaskCreator")
+  taskComments      TeamTaskComment[] @relation("TaskCommentAuthor")
+  teamNotifications TeamNotification[]
 }
 
 model Account {
