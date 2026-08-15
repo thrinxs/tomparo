@@ -11,6 +11,7 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const role = (token?.role as string) || "GUEST";
   const isRecruiter = (token as any)?.isRecruiter as boolean | undefined;
+  const isTeamMember = (token as any)?.isTeamMember as boolean | undefined;
 
   // ── Public routes ──────────────────────────────────────────────────────────
   const publicRoutes = [
@@ -49,7 +50,7 @@ export async function proxy(request: NextRequest) {
           "RECRUITER_ENTERPRISE",
           "RECRUITER_SCALE",
           "RECRUITER_CUSTOM",
-        ].includes(role) || isRecruiter
+        ].includes(role) || isRecruiter || isTeamMember
       ) {
         return NextResponse.redirect(new URL("/recruiter", request.url));
       }
@@ -114,7 +115,7 @@ if (pathname.startsWith("/jobs")) {
         "RECRUITER_SCALE",
         "RECRUITER_CUSTOM",
         "ADMIN",
-      ].includes(role) || isRecruiter;
+      ].includes(role) || isRecruiter || isTeamMember;
 
     if (!hasRecruiterAccess) {
       return NextResponse.redirect(new URL("/recruiter-pricing", request.url));
@@ -148,7 +149,7 @@ if (pathname.startsWith("/api/track")) {
 
   if (pathname.startsWith("/dashboard")) {
     if (!token) return NextResponse.redirect(new URL("/signin", request.url));
-    // Safety net — recruiters should never land on job seeker dashboard
+    // Safety net — recruiters and team members should never land on job seeker dashboard
     if (
       token &&
       (
@@ -159,7 +160,7 @@ if (pathname.startsWith("/api/track")) {
           "RECRUITER_ENTERPRISE",
           "RECRUITER_SCALE",
           "RECRUITER_CUSTOM",
-        ].includes(role) || isRecruiter
+        ].includes(role) || isRecruiter || isTeamMember
       )
     ) {
       return NextResponse.redirect(new URL("/recruiter", request.url));
