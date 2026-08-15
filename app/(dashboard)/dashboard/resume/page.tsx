@@ -1,4 +1,5 @@
 "use client";
+import { useFaviconStore } from "@/lib/favicon-store";
 
 import { useState, useEffect } from "react";
 import ResumeUploader from "@/components/resume/ResumeUploader";
