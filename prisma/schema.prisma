@@ -658,3 +658,48 @@ model Portfolio {
   updatedAt      DateTime @updatedAt
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model DocumentBatch {
+  id          String          @id @default(cuid())
+  recruiterId String
+  name        String
+  notes       String?         @db.Text
+  totalFiles  Int             @default(0)
+  uploadedAt  DateTime        @default(now())
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  groups      DocumentGroup[]
+  files       DocumentFile[]
+}
+
+model DocumentGroup {
+  id           String         @id @default(cuid())
+  batchId      String
+  recruiterId  String
+  detectedType String
+  customName   String?
+  fileCount    Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  batch        DocumentBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  files        DocumentFile[]
+}
+
+model DocumentFile {
+  id           String         @id @default(cuid())
+  batchId      String
+  groupId      String
+  recruiterId  String
+  candidateId  String?
+  fileName     String
+  detectedType String
+  typeName     String
+  confidence   Int            @default(0)
+  reasoning    String?        @db.Text
+  rawText      String?        @db.Text
+  uploadedAt   DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  batch        DocumentBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  group        DocumentGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+}

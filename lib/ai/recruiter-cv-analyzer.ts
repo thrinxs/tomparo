@@ -9,32 +9,37 @@ export interface DocumentDetection {
   type: "CV" | "COVER_LETTER" | "REFERENCE_LETTER" | "TRANSCRIPT" | "PORTFOLIO" | "OTHER";
   typeName: string;
   confidence: number;
-  reason: string;
+  reasoning: string;
+  structureClues: string[];
+  languageClues: string[];
 }
 
 export async function detectDocumentType(text: string): Promise<DocumentDetection> {
-  const prompt = `You are a document classification expert. Analyse the following document text and identify what type of document it is.
+  const prompt = `You are an expert document analyst. Your job is to carefully read a document and determine exactly what type of document it is.
 
-DOCUMENT TEXT (first 3000 characters):
-${text.slice(0, 3000)}
+Study the following carefully:
+1. STRUCTURE — What sections exist? (e.g. Work Experience, Education, Skills = CV. Dear Hiring Manager... = Cover Letter. To Whom It May Concern + signature of third party = Reference Letter. Course codes + grades = Transcript)
+2. LAYOUT PATTERNS — Does it follow a resume template? Is it written as a letter? Is it a table of grades?
+3. LANGUAGE TONE — Is it written in first person describing the writer's own experience? Is it addressed to someone? Is it written by someone else about the candidate?
+4. CONTENT — What information dominates? Contact details + career history = CV. Motivation narrative = Cover Letter. Academic performance = Transcript. Work samples = Portfolio.
+5. KEYWORDS — Look for section headers like "Summary", "Experience", "Education", "Skills", "References", "Objective" for CVs. "Dear", "I am writing", "sincerely" for cover letters. "GPA", "Grade", "Credits", "Semester" for transcripts. "To whom it may concern", "I hereby recommend" for reference letters.
 
-Return ONLY valid JSON in this exact format:
+DOCUMENT TEXT:
+${text.slice(0, 5000)}
+
+Return ONLY valid JSON:
 {
   "type": "CV",
   "typeName": "Curriculum Vitae",
   "confidence": 95,
-  "reason": "Document contains work experience, education, skills sections typical of a CV"
+  "reasoning": "This document contains clearly structured sections including Work Experience with dated entries, Education with institution names, a Skills section, and contact information at the top. The language is written in first person describing the candidate's own professional history. The layout follows a standard CV template.",
+  "structureClues": ["Has Work Experience section with dates", "Has Education section", "Has Skills section", "Contact info at top"],
+  "languageClues": ["Written in first person", "Describes own achievements", "Professional summary present"]
 }
 
-The type MUST be one of exactly these values:
-- "CV" — A resume or curriculum vitae listing work experience, education, skills
-- "COVER_LETTER" — A letter of application addressed to an employer
-- "REFERENCE_LETTER" — A letter written by someone else recommending a candidate
-- "TRANSCRIPT" — An academic transcript showing grades/courses
-- "PORTFOLIO" — A portfolio of work samples
-- "OTHER" — Any other document type
-
-confidence is a number 0-100 representing how confident you are.`;
+type MUST be exactly one of: CV, COVER_LETTER, REFERENCE_LETTER, TRANSCRIPT, PORTFOLIO, OTHER
+confidence is 0-100.
+reasoning must be a detailed explanation of WHY you classified it this way.`;
 
   try {
     const result = await generateJSONWithGemini<DocumentDetection>(prompt, "general");
@@ -44,7 +49,9 @@ confidence is a number 0-100 representing how confident you are.`;
       type: "OTHER",
       typeName: "Unknown Document",
       confidence: 0,
-      reason: "Could not determine document type",
+      reasoning: "Could not determine document type",
+      structureClues: [],
+      languageClues: [],
     };
   }
 }

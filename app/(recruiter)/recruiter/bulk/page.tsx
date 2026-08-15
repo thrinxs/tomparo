@@ -89,6 +89,10 @@ export default function BulkUploadPage() {
   const [topX, setTopX] = useState<number | "">(0);
   const [showTopX, setShowTopX] = useState(false);
 
+  // Position matching
+  const [positionMatches, setPositionMatches] = useState<any>(null);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+
   // Load job posts
   useEffect(() => {
     if (stage === "job") {
@@ -100,6 +104,28 @@ export default function BulkUploadPage() {
         .finally(() => setLoadingJobs(false));
     }
   }, [stage]);
+
+  // Fetch position matches when job selected or manual title entered
+  useEffect(() => {
+    const title = jobMode === "select" && selectedJobId
+      ? jobPosts.find((j) => j.id === selectedJobId)?.title || ""
+      : manualJobTitle;
+    if (!title || title.length < 3) { setPositionMatches(null); return; }
+    const t = setTimeout(async () => {
+      setLoadingMatches(true);
+      try {
+        const res = await fetch("/api/recruiter/candidates/match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobTitle: title, requirements: manualJobRequirements }),
+        });
+        const data = await res.json();
+        setPositionMatches(data.total > 0 ? data : null);
+      } catch {}
+      finally { setLoadingMatches(false); }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [selectedJobId, manualJobTitle, manualJobRequirements, jobMode, jobPosts]);
 
   // Dropzone
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -260,6 +286,31 @@ export default function BulkUploadPage() {
 
     const successful = allResults.filter((r) => r.success).length;
     toast.success(`${successful} of ${allResults.length} CVs analysed successfully!`);
+
+    // Save all files to document library
+    try {
+      const allFiles = cvFiles.map((cv) => {
+        const result = allResults.find((r) => r.fileName === cv.fileName);
+        return {
+          fileName: cv.fileName,
+          detectedType: cv.docType?.type || "OTHER",
+          typeName: cv.docType?.typeName || "Unknown",
+          confidence: cv.docType?.confidence || 0,
+          reasoning: cv.docType?.reasoning || null,
+          rawText: cv.text || null,
+          candidateId: result?.candidateId || null,
+        };
+      });
+      const jobContext = getJobContext();
+      await fetch("/api/recruiter/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Bulk Upload — ${jobContext?.title || new Date().toLocaleDateString()}`,
+          files: allFiles,
+        }),
+      });
+    } catch {}
   };
 
   const resetAll = () => {
@@ -568,6 +619,41 @@ export default function BulkUploadPage() {
                   rows={5}
                   className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 resize-none transition" />
               </div>
+            </div>
+          )}
+
+          {/* Position matches */}
+          {(loadingMatches || positionMatches) && (
+            <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 p-4 space-y-3">
+              {loadingMatches ? (
+                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" />Checking existing candidate database...
+                </div>
+              ) : positionMatches && (
+                <>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <p className="text-sm font-semibold text-indigo-300">
+                      {positionMatches.total} previously uploaded CV{positionMatches.total !== 1 ? "s" : ""} match this position
+                    </p>
+                    <Link href="/recruiter/candidates" className="text-xs text-indigo-400 hover:text-indigo-300 transition underline underline-offset-2">
+                      View matching candidates →
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { label: "Top Ranked", value: positionMatches.categorized.topRanked.length, color: "text-emerald-400" },
+                      { label: "Available", value: positionMatches.categorized.available.length, color: "text-blue-400" },
+                      { label: "Rejected", value: positionMatches.categorized.rejected.length, color: "text-red-400" },
+                      { label: "Hired", value: positionMatches.categorized.hired.length, color: "text-amber-400" },
+                    ].map((cat) => (
+                      <div key={cat.label} className="rounded-xl bg-black/20 p-2 text-center">
+                        <p className={`text-lg font-bold ${cat.color}`}>{cat.value}</p>
+                        <p className="text-[10px] text-slate-500">{cat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

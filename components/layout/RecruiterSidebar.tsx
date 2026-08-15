@@ -7,7 +7,7 @@ import { useSession } from "next-auth/react";
 import {
   LayoutDashboard, Users, Briefcase, Upload, Mic, Mail,
   Bot, BarChart3, Settings, Lock, Rocket, FileText,
-  Kanban, Inbox, X, MessageSquare,
+  Kanban, Inbox, X, MessageSquare, FolderOpen,
 } from "lucide-react";
 
 interface NavItem {
@@ -31,6 +31,10 @@ const navItems: NavItem[] = [
   },
   {
     href: "/recruiter/bulk", label: "Bulk Upload", icon: FileText,
+    requiredPlan: ["RECRUITER_GROWTH", "RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
+  },
+  {
+    href: "/recruiter/documents", label: "Document Library", icon: FolderOpen,
     requiredPlan: ["RECRUITER_GROWTH", "RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
   },
   {

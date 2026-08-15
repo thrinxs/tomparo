@@ -54,6 +54,10 @@ export default function RecruiterUploadPage() {
   const [showAllRedFlags, setShowAllRedFlags] = useState(false);
   const [usage, setUsage] = useState<{ used: number; limit: number; remaining: number } | null>(null);
 
+  // Position matching
+  const [positionMatches, setPositionMatches] = useState<any>(null);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+
   // Job context
   const [jobPosts, setJobPosts] = useState<JobPost[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -96,6 +100,27 @@ export default function RecruiterUploadPage() {
         .finally(() => setLoadingJobs(false));
     }
   }, [stage]);
+
+  useEffect(() => {
+    const title = jobMode === "select" && selectedJobId
+      ? jobPosts.find((j) => j.id === selectedJobId)?.title || ""
+      : manualJobTitle;
+    if (!title || title.length < 3) { setPositionMatches(null); return; }
+    const t = setTimeout(async () => {
+      setLoadingMatches(true);
+      try {
+        const res = await fetch("/api/recruiter/candidates/match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobTitle: title, requirements: manualJobRequirements }),
+        });
+        const data = await res.json();
+        setPositionMatches(data.total > 0 ? data : null);
+      } catch {}
+      finally { setLoadingMatches(false); }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [selectedJobId, manualJobTitle, manualJobRequirements, jobMode, jobPosts]);
 
   const handleFileReady = async (text: string, fileName?: string) => {
     setPendingText(text);
