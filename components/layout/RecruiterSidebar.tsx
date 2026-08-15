@@ -38,6 +38,16 @@ const navItems: NavItem[] = [
     requiredPlan: ["RECRUITER_GROWTH", "RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
   },
   {
+    href: "/recruiter/team", label: "Team", icon: Users,
+    dividerBefore: true,
+  },
+  {
+    href: "/recruiter/team/room", label: "Conference Room", icon: MessageSquare,
+  },
+  {
+    href: "/recruiter/team/tasks", label: "Tasks", icon: CheckSquare,
+  },
+  {
     href: "/recruiter/interviews", label: "AI Interviews", icon: MessageSquare,
     requiredPlan: ["RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
     dividerBefore: true,

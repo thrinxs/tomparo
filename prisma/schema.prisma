@@ -234,6 +234,8 @@ model RecruiterProfile {
   updatedAt       DateTime  @updatedAt
   documentBatches  DocumentBatch[]
   cvVerifications  CvVerification[]
+  teamRooms        TeamRoom[]
+  teamTasks        TeamTask[]
 }
 
 // ── Global Interview Message Template ─────────────────────────────────────────
@@ -740,4 +742,71 @@ model CvVerifiableEntity {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   verification    CvVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+}
+
+model TeamRoom {
+  id          String        @id @default(cuid())
+  recruiterId String
+  name        String
+  description String?       @db.Text
+  isDefault   Boolean       @default(false)
+  createdById String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  messages    TeamMessage[]
+}
+
+model TeamMessage {
+  id        String    @id @default(cuid())
+  roomId    String
+  senderId  String
+  content   String    @db.Text
+  pinned    Boolean   @default(false)
+  editedAt  DateTime?
+  createdAt DateTime  @default(now())
+  room      TeamRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender    User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+model TeamTask {
+  id           String            @id @default(cuid())
+  recruiterId  String
+  title        String
+  description  String?           @db.Text
+  priority     String            @default("MEDIUM")
+  status       String            @default("TODO")
+  assignedToId String
+  createdById  String
+  dueDate      DateTime?
+  candidateId  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  recruiter    RecruiterProfile  @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  assignedTo   User              @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  createdBy    User              @relation("TaskCreator", fields: [createdById], references: [id])
+  comments     TeamTaskComment[]
+}
+
+model TeamTaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  task      TeamTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User     @relation("TaskCommentAuthor", fields: [authorId], references: [id])
+}
+
+model TeamNotification {
+  id          String   @id @default(cuid())
+  userId      String
+  recruiterId String
+  type        String
+  title       String
+  body        String?  @db.Text
+  read        Boolean  @default(false)
+  link        String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

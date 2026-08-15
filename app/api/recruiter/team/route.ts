@@ -16,33 +16,36 @@ const seatLimits: Record<string, number> = {
   ADMIN: 999,
 };
 
+// Helper — get recruiter profile for either owner or team member
+async function getRecruiterProfile(userId: string) {
+  // Try direct ownership first
+  let profile = await prisma.recruiterProfile.findUnique({ where: { userId } });
+  if (profile) return { profile, isOwner: true };
+
+  // Try via team membership
+  const membership = await prisma.recruiterTeamMember.findFirst({
+    where: { userId },
+    include: { recruiter: true },
+  });
+  if (membership) return { profile: membership.recruiter, isOwner: false, memberRole: membership.role };
+
+  return { profile: null, isOwner: false };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const userId = (session.user as any).id as string;
-
-    const profile = await prisma.recruiterProfile.findUnique({
-      where: { userId },
-    });
-
-    if (!profile) {
-      return NextResponse.json(
-        { error: "Recruiter profile not found" },
-        { status: 404 }
-      );
-    }
+    const { profile } = await getRecruiterProfile(userId);
+    if (!profile) return NextResponse.json({ error: "Recruiter profile not found" }, { status: 404 });
 
     const [members, invites] = await Promise.all([
       prisma.recruiterTeamMember.findMany({
         where: { recruiterId: profile.id },
         include: {
-          user: {
-            select: { id: true, name: true, email: true, image: true },
-          },
+          user: { select: { id: true, name: true, email: true, image: true, createdAt: true } },
         },
         orderBy: { joinedAt: "asc" },
       }),
@@ -56,115 +59,77 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    return NextResponse.json({ members, invites });
+    // Get recent activity per member
+    const memberActivities = await Promise.all(
+      members.map(async (m) => {
+        const logs = await prisma.recruiterActivityLog.findMany({
+          where: { recruiterId: profile.id },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        });
+        return { userId: m.userId, logs };
+      })
+    );
+
+    return NextResponse.json({
+      members,
+      invites,
+      memberActivities,
+      seatLimit: seatLimits[(session.user as any).role] || 1,
+      usedSeats: members.length,
+    });
   } catch (error) {
     console.error("Get team error:", error);
-    return NextResponse.json(
-      { error: "Failed to load team" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to load team" }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const userId = (session.user as any).id as string;
     const role = (session.user as any).role as string;
+    const { profile } = await getRecruiterProfile(userId);
+    if (!profile) return NextResponse.json({ error: "Recruiter profile not found" }, { status: 404 });
 
-    const profile = await prisma.recruiterProfile.findUnique({
-      where: { userId },
-    });
-
-    if (!profile) {
-      return NextResponse.json(
-        { error: "Recruiter profile not found" },
-        { status: 404 }
-      );
-    }
-
-    // ── Check seat limit ──
     const seatLimit = seatLimits[role] || 1;
-    const currentMembers = await prisma.recruiterTeamMember.count({
-      where: { recruiterId: profile.id },
-    });
+    const currentMembers = await prisma.recruiterTeamMember.count({ where: { recruiterId: profile.id } });
     const pendingInvites = await prisma.recruiterInvite.count({
-      where: {
-        recruiterId: profile.id,
-        status: "PENDING",
-        expiresAt: { gt: new Date() },
-      },
+      where: { recruiterId: profile.id, status: "PENDING", expiresAt: { gt: new Date() } },
     });
 
     if (currentMembers + pendingInvites >= seatLimit) {
-      return NextResponse.json(
-        {
-          error: `Your plan allows ${seatLimit} seat${seatLimit !== 1 ? "s" : ""}. Upgrade to invite more team members.`,
-          upgradeRequired: true,
-          seatLimit,
-        },
-        { status: 403 }
-      );
+      return NextResponse.json({
+        error: `Your plan allows ${seatLimit} seat${seatLimit !== 1 ? "s" : ""}. Upgrade to invite more.`,
+        upgradeRequired: true, seatLimit,
+      }, { status: 403 });
     }
 
     const { email, memberRole } = await req.json();
+    if (!email) return NextResponse.json({ error: "Email is required" }, { status: 400 });
 
-    if (!email) {
-      return NextResponse.json(
-        { error: "Email is required" },
-        { status: 400 }
-      );
-    }
-
-    // ── Check if already a member ──
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       const alreadyMember = await prisma.recruiterTeamMember.findFirst({
         where: { recruiterId: profile.id, userId: existingUser.id },
       });
-      if (alreadyMember) {
-        return NextResponse.json(
-          { error: "This person is already a team member" },
-          { status: 400 }
-        );
-      }
+      if (alreadyMember) return NextResponse.json({ error: "This person is already a team member" }, { status: 400 });
     }
 
-    // ── Check for existing pending invite ──
     const existingInvite = await prisma.recruiterInvite.findFirst({
-      where: {
-        recruiterId: profile.id,
-        email,
-        status: "PENDING",
-        expiresAt: { gt: new Date() },
-      },
+      where: { recruiterId: profile.id, email, status: "PENDING", expiresAt: { gt: new Date() } },
     });
+    if (existingInvite) return NextResponse.json({ error: "An invite has already been sent to this email" }, { status: 400 });
 
-    if (existingInvite) {
-      return NextResponse.json(
-        { error: "An invite has already been sent to this email" },
-        { status: 400 }
-      );
-    }
-
-    // ── Create invite ──
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+    expiresAt.setDate(expiresAt.getDate() + 7);
 
     const invite = await prisma.recruiterInvite.create({
-      data: {
-        recruiterId: profile.id,
-        email,
-        role: memberRole || "MEMBER",
-        expiresAt,
-      },
+      data: { recruiterId: profile.id, email, role: memberRole || "MEMBER", expiresAt },
     });
 
-    // ── Send invite email ──
     const inviteUrl = `${process.env.NEXTAUTH_URL}/recruiter/invite/accept?token=${invite.token}`;
 
     await sendEmail({
@@ -186,7 +151,6 @@ export async function POST(req: NextRequest) {
       `,
     });
 
-    // ── Log activity ──
     await logActivity({
       recruiterId: profile.id,
       type: "TEAM_MEMBER_INVITED",
@@ -198,9 +162,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, invite });
   } catch (error) {
     console.error("Invite team member error:", error);
-    return NextResponse.json(
-      { error: "Failed to send invite" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to send invite" }, { status: 500 });
   }
 }
