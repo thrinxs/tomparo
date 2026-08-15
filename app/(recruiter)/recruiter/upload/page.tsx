@@ -43,7 +43,6 @@ export default function RecruiterUploadPage() {
   const [pendingText, setPendingText] = useState("");
   const [pendingFileName, setPendingFileName] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [detectedDocType, setDetectedDocType] = useState<any>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
