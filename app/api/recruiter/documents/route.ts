@@ -69,7 +69,6 @@ export async function POST(req: NextRequest) {
       const group = await prisma.documentGroup.create({
         data: {
           batchId: batch.id,
-          recruiterId: profile.id,
           detectedType: type,
           fileCount: groupFiles.length,
         },

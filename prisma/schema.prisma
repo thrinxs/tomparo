@@ -233,7 +233,6 @@ model RecruiterProfile {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   documentBatches DocumentBatch[]
-  documentGroups  DocumentGroup[]
 }
 
 // ── Global Interview Message Template ─────────────────────────────────────────
@@ -678,7 +677,6 @@ model DocumentBatch {
 model DocumentGroup {
   id           String         @id @default(cuid())
   batchId      String
-  recruiterId  String
   detectedType String
   customName   String?
   fileCount    Int            @default(0)
