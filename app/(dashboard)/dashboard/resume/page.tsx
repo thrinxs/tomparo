@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 export default function ResumePage() {
+  const { setLoading: setFaviconLoading, setSuccess: setFaviconSuccess } = useFaviconStore();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [error, setError] = useState("");

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import { useFaviconStore } from "@/lib/favicon-store";
 
 const recommendationConfig = {
   "Strong Hire": { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", icon: CheckCircle, bar: "bg-emerald-500" },
@@ -38,6 +39,7 @@ interface JobPost {
 }
 
 export default function RecruiterUploadPage() {
+  const { setLoading: setFaviconLoading, setSuccess: setFaviconSuccess } = useFaviconStore();
   const { data: session } = useSession();
   const [stage, setStage] = useState<"upload" | "job" | "analyzing" | "result">("upload");
   const [pendingText, setPendingText] = useState("");
@@ -170,6 +172,7 @@ export default function RecruiterUploadPage() {
 
     setIsAnalyzing(true);
     setStage("analyzing");
+    setFaviconLoading();
     setError("");
     setAnalysis(null);
     setCandidateId(null);
@@ -200,6 +203,7 @@ export default function RecruiterUploadPage() {
 
       setProgress(100);
       setUsage(data.usage);
+      setFaviconSuccess();
       setTimeout(() => {
         setAnalysis(data.analysis);
         setCandidateId(data.candidateId);

@@ -7,6 +7,7 @@ import SessionProvider from "../components/SessionProvider";
 import TawkChat from "../components/TawkChat";
 import CookieBanner from "../components/CookieBanner";
 import { Toaster } from "react-hot-toast";
+import FaviconManager from "../components/FaviconManager";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -61,7 +62,8 @@ export default function RootLayout({
           <Footer />
           <TawkChat />
           <CookieBanner />
-          <Toaster
+          <FaviconManager />
+        <Toaster
             position="top-right"
             toastOptions={{
               style: {

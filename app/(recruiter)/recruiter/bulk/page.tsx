@@ -10,6 +10,7 @@ import {
   ChevronRight, PenLine, Filter, Trophy, FileX, Mail,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useFaviconStore } from "@/lib/favicon-store";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,8 @@ export default function BulkUploadPage() {
   // Position matching
   const [positionMatches, setPositionMatches]   = useState<PositionMatches | null>(null);
   const [loadingMatches, setLoadingMatches]     = useState(false);
+
+  const { setLoading: setFaviconLoading, setSuccess: setFaviconSuccess } = useFaviconStore();
 
   // ── Load active job posts when entering job stage ──
   useEffect(() => {
@@ -294,6 +297,7 @@ export default function BulkUploadPage() {
 
     setCurrentIndex(0);
     setStage("analyzing");
+    setFaviconLoading();
 
     const allResults: AnalysisResult[] = [];
 
@@ -330,6 +334,7 @@ export default function BulkUploadPage() {
     setResults(allResults);
     setStage("done");
 
+    setFaviconSuccess();
     const successful = allResults.filter((r) => r.success).length;
     toast.success(`${successful} of ${allResults.length} CVs analysed successfully!`);
 
