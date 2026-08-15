@@ -7,7 +7,7 @@ import { useSession } from "next-auth/react";
 import {
   LayoutDashboard, Users, Briefcase, Upload, Mic, Mail,
   Bot, BarChart3, Settings, Lock, Rocket, FileText,
-  Kanban, Inbox, X, MessageSquare, FolderOpen,
+  Kanban, Inbox, X, MessageSquare, FolderOpen, CheckSquare,
 } from "lucide-react";
 
 interface NavItem {
