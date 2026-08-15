@@ -178,7 +178,7 @@ export default function BulkUploadPage() {
     for (let i = 0; i < updated.length; i++) {
       const cv = updated[i];
       if (!cv.text || cv.error) {
-        updated[i] = { ...cv, docType: { type: "OTHER", typeName: "Unreadable", confidence: 0, reason: "Could not read file" } };
+        updated[i] = { ...cv, docType: { type: "OTHER", typeName: "Unreadable", confidence: 0, reasoning: "Could not read file" } };
       } else {
         try {
           const detected = await detectDocumentType(cv.text);
