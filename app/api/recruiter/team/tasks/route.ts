@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       include: {
         assignedTo: { select: { id: true, name: true, email: true, image: true } },
         createdBy: { select: { id: true, name: true } },
-        comments: [],
+        comments: { include: { author: { select: { id: true, name: true, image: true } } }, orderBy: { createdAt: "asc" } },
       },
     });
 
