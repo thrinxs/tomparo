@@ -23,7 +23,9 @@ interface CVFile {
     type: string;
     typeName: string;
     confidence: number;
-    reason: string;
+    reasoning: string;
+    structureClues?: string[];
+    languageClues?: string[];
   };
   detecting?: boolean;
 }
@@ -182,7 +184,7 @@ export default function BulkUploadPage() {
           const detected = await detectDocumentType(cv.text);
           updated[i] = { ...cv, docType: detected };
         } catch {
-          updated[i] = { ...cv, docType: { type: "CV", typeName: "CV", confidence: 50, reason: "Detection failed — assuming CV" } };
+          updated[i] = { ...cv, docType: { type: "CV", typeName: "CV", confidence: 50, reasoning: "Detection failed — assuming CV", structureClues: [], languageClues: [] } };
         }
       }
       setDetectionProgress(Math.round(((i + 1) / updated.length) * 100));
