@@ -8,6 +8,9 @@ import {
   Globe, Star, AlertTriangle, Trophy, CheckCircle, XCircle,
   ChevronDown, ChevronUp, Zap, TrendingUp, BarChart3, Loader2,
   ChevronRight, Send, Wand2, Paperclip, Info, MessageSquare,
+  Download, FileText, Shield, ShieldCheck, ShieldAlert, ShieldX,
+  Building2, GraduationCap as GradCap, Award, RefreshCw, ExternalLink,
+  FolderOpen, Eye,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -60,6 +63,14 @@ export default function CandidateDetailPage() {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [replyToEmail, setReplyToEmail] = useState("");
   const [emailHistory, setEmailHistory] = useState<any[]>([]);
+  const [verification, setVerification] = useState<any>(null);
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [runningVerification, setRunningVerification] = useState(false);
+  const [sendingEntityId, setSendingEntityId] = useState<string | null>(null);
+  const [editingEntity, setEditingEntity] = useState<string | null>(null);
+  const [entityEmail, setEntityEmail] = useState("");
+  const [entityName, setEntityName] = useState("");
+  const [cvDownloading, setCvDownloading] = useState(false);
   const [interviewDate, setInterviewDate] = useState("");
   const [interviewType, setInterviewType] = useState("");
   const [salary, setSalary] = useState("");
@@ -97,6 +108,13 @@ export default function CandidateDetailPage() {
           });
           setStatus("REVIEWED");
         }
+        // Fetch verification data
+        try {
+          const vRes = await fetch(`/api/recruiter/candidates/${candidateId}/verification`);
+          const vData = await vRes.json();
+          if (vData.verification) setVerification(vData.verification);
+        } catch {}
+
         const settingsRes = await fetch("/api/recruiter/settings");
         const settingsData = await settingsRes.json();
         if (settingsData.profile?.replyToEmail) {
@@ -119,6 +137,102 @@ export default function CandidateDetailPage() {
       }, 500);
     }
   }, [loading]);
+
+  const handleDownloadCV = async () => {
+    setCvDownloading(true);
+    try {
+      const res = await fetch(`/api/recruiter/candidates/${candidateId}/cv`);
+      const data = await res.json();
+      if (data.signedUrl) {
+        window.open(data.signedUrl, "_blank");
+      } else if (data.rawText) {
+        const blob = new Blob([data.rawText], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${candidate?.candidateName || "CV"}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        toast.error("No CV file available");
+      }
+    } catch {
+      toast.error("Failed to download CV");
+    } finally {
+      setCvDownloading(false);
+    }
+  };
+
+  const handleRunVerification = async () => {
+    setRunningVerification(true);
+    try {
+      const res = await fetch(`/api/recruiter/candidates/${candidateId}/verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.upgradeRequired) {
+          toast.error("CV Verification requires Business plan or higher");
+        } else {
+          throw new Error(data.error);
+        }
+        return;
+      }
+      setVerification(data.verification);
+      toast.success("Verification analysis complete!");
+    } catch (err: any) {
+      toast.error(err.message || "Verification failed");
+    } finally {
+      setRunningVerification(false);
+    }
+  };
+
+  const handleSendVerificationEmail = async (entityId: string) => {
+    if (!entityEmail.trim()) { toast.error("Enter a contact email"); return; }
+    setSendingEntityId(entityId);
+    try {
+      const res = await fetch(`/api/recruiter/candidates/${candidateId}/verification/entity/${entityId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_email", contactEmail: entityEmail, contactName: entityName }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.upgradeRequired) toast.error("Email outreach requires Enterprise plan");
+        else throw new Error(data.error);
+        return;
+      }
+      setVerification((prev: any) => ({
+        ...prev,
+        entities: prev.entities.map((e: any) => e.id === entityId ? { ...e, status: "SENT", contactEmail: entityEmail } : e),
+      }));
+      setEditingEntity(null);
+      toast.success("Verification email sent!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send email");
+    } finally {
+      setSendingEntityId(null);
+    }
+  };
+
+  const handleMarkVerified = async (entityId: string, status: string) => {
+    try {
+      const res = await fetch(`/api/recruiter/candidates/${candidateId}/verification/entity/${entityId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error();
+      setVerification((prev: any) => ({
+        ...prev,
+        entities: prev.entities.map((e: any) => e.id === entityId ? { ...e, status } : e),
+      }));
+      toast.success(`Marked as ${status.toLowerCase()}`);
+    } catch {
+      toast.error("Failed to update status");
+    }
+  };
 
   const handleStatusChange = async (newStatus: string) => {
     setUpdatingStatus(true);
@@ -285,36 +399,53 @@ export default function CandidateDetailPage() {
             <ArrowLeft className="w-4 h-4" />
             Back to Candidates
           </Link>
-          <Link
-            href={`/recruiter/interviews?startFor=${candidateId}`}
-            onClick={async (e) => {
-              e.preventDefault();
-              try {
-                const res = await fetch("/api/recruiter/interviews", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ candidateId, mode: "ASYNC" }),
-                });
-                const data = await res.json();
-                if (!res.ok) {
-                  if (data.upgradeRequired) {
-                    toast.error("AI Interviews require Business plan or higher");
-                  } else {
-                    toast.error(data.error || "Failed to start interview");
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleDownloadCV}
+              disabled={cvDownloading}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-slate-400 text-sm font-medium hover:text-white transition disabled:opacity-50"
+            >
+              {cvDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Download CV
+            </button>
+            <button
+              onClick={handleRunVerification}
+              disabled={runningVerification}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 text-sm font-medium hover:bg-emerald-500/20 transition disabled:opacity-50"
+            >
+              {runningVerification ? <><Loader2 className="w-4 h-4 animate-spin" />Verifying...</> : <><Shield className="w-4 h-4" />Verify CV</>}
+            </button>
+            <Link
+              href={`/recruiter/interviews?startFor=${candidateId}`}
+              onClick={async (e) => {
+                e.preventDefault();
+                try {
+                  const res = await fetch("/api/recruiter/interviews", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ candidateId, mode: "ASYNC" }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) {
+                    if (data.upgradeRequired) {
+                      toast.error("AI Interviews require Business plan or higher");
+                    } else {
+                      toast.error(data.error || "Failed to start interview");
+                    }
+                    return;
                   }
-                  return;
+                  toast.success("Interview created! AI generated questions.");
+                  window.location.href = `/recruiter/interviews/${data.interview.id}`;
+                } catch {
+                  toast.error("Failed to start interview");
                 }
-                toast.success("Interview created! AI generated questions.");
-                window.location.href = `/recruiter/interviews/${data.interview.id}`;
-              } catch {
-                toast.error("Failed to start interview");
-              }
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-500 transition"
-          >
-            <MessageSquare className="w-4 h-4" />
-            Start Interview
-          </Link>
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-500 transition"
+            >
+              <MessageSquare className="w-4 h-4" />
+              Start Interview
+            </Link>
+          </div>
         </div>
       </div>
 

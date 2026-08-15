@@ -955,6 +955,28 @@ function CandidatesInner() {
                           </Link>
                         )}
 
+                        <button
+                          onClick={async () => {
+                            const res = await fetch(`/api/recruiter/candidates/${candidate.id}/cv`);
+                            const data = await res.json();
+                            if (data.signedUrl) {
+                              window.open(data.signedUrl, "_blank");
+                            } else if (data.rawText) {
+                              const blob = new Blob([data.rawText], { type: "text/plain" });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url; a.download = `${candidate.candidateName || "CV"}.txt`;
+                              a.click(); URL.revokeObjectURL(url);
+                            } else {
+                              toast.error("No CV file available");
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-500/10 border border-slate-500/20 text-slate-400 text-xs font-medium hover:bg-slate-500/20 transition"
+                        >
+                          <FileText className="w-3 h-3" />
+                          CV
+                        </button>
+
                         <Link
                           href={`/recruiter/candidates/${candidate.id}`}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-medium hover:bg-purple-500/20 transition"
