@@ -9,6 +9,7 @@ import {
   CheckCircle, XCircle, AlertTriangle, Clock, Star, Trophy,
   Mail, Send, Loader2, X, ChevronDown, Wand2,
   Video, MessageSquare, Mic, Zap,
+  FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
