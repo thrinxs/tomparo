@@ -94,16 +94,24 @@ interface Props {
 export default function RecruiterSidebar({ isOpen, onClose }: Props) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const role = (session?.user as any)?.role as string | undefined;
+
+  const user = session?.user as any;
+  const role = user?.role as string | undefined;
+  const isTeamMember = !!user?.isTeamMember;
+  const teamOwnerRole = user?.teamOwnerRole as string | undefined;
+
+  // Team members inherit their company owner's plan for feature access
+  const effectiveRole = isTeamMember ? teamOwnerRole : role;
 
   const hasAccess = (requiredPlan?: string[]) => {
     if (!requiredPlan) return true;
-    if (!role) return false;
-    return requiredPlan.includes(role) || role === "ADMIN";
+    if (!effectiveRole) return false;
+    return requiredPlan.includes(effectiveRole) || effectiveRole === "ADMIN";
   };
 
-  const isStarter = role === "RECRUITER_STARTER" || !role;
-  const hasNoRole = !role || role === "FREE";
+  // Team members should never see the upgrade banner
+  const isStarter = !isTeamMember && (effectiveRole === "RECRUITER_STARTER" || !effectiveRole);
+  const hasNoRole  = !isTeamMember && (!effectiveRole || effectiveRole === "FREE");
 
   return (
     <aside className={`
@@ -126,12 +134,14 @@ export default function RecruiterSidebar({ isOpen, onClose }: Props) {
       </div>
 
       {/* Plan badge */}
-      {role && role.startsWith("RECRUITER") && (
+      {effectiveRole?.startsWith("RECRUITER") && (
         <div className="px-4 pt-3">
           <div className="flex items-center gap-2 rounded-lg bg-purple-500/10 border border-purple-500/20 px-3 py-1.5">
             <div className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-pulse" />
             <span className="text-xs font-semibold text-purple-400">
-              {planNames[role] ?? "Recruiter"} Plan
+              {isTeamMember
+                ? `${planNames[teamOwnerRole ?? ""] ?? "Team"} Plan · Team Member`
+                : `${planNames[role ?? ""] ?? "Recruiter"} Plan`}
             </span>
           </div>
         </div>
@@ -179,7 +189,7 @@ export default function RecruiterSidebar({ isOpen, onClose }: Props) {
         })}
       </nav>
 
-      {/* Upgrade Banner */}
+      {/* Upgrade Banner — hidden for team members */}
       {(isStarter || hasNoRole) && (
         <div className="border-t border-white/5 p-4">
           <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-600/10 to-pink-500/5 p-4">

@@ -21,10 +21,15 @@ export default async function RecruiterDashboardPage() {
 
   const userId = (session.user as any).id;
   const role = (session.user as any).role as string;
+  const isTeamMember = !!(session.user as any).isTeamMember;
+  const teamRecruiterId = (session.user as any).teamRecruiterId as string | undefined;
+  const teamOwnerRole = (session.user as any).teamOwnerRole as string | undefined;
+  const effectiveRole = (isTeamMember && teamOwnerRole) ? teamOwnerRole : role;
 
   // Get recruiter profile + counts
+  const profileLookupId = isTeamMember ? teamRecruiterId : undefined;
   const profile = await prisma.recruiterProfile.findUnique({
-    where: { userId },
+    where: isTeamMember && profileLookupId ? { id: profileLookupId } : { userId },
     include: {
       _count: {
         select: {
@@ -36,7 +41,7 @@ export default async function RecruiterDashboardPage() {
   });
 
   // If no profile yet (edge case — signed up via Google without recruiter flow)
-  if (!profile) {
+  if (!profile && !isTeamMember) {
     redirect("/recruiter-pricing");
   }
 
@@ -58,14 +63,14 @@ export default async function RecruiterDashboardPage() {
     RECRUITER_CUSTOM: 99999,
   };
 
-  const planName = planNames[role] ?? "Free";
-  const cvLimit = cvLimits[role] ?? 0;
-  const cvsUsed = profile.cvsUsedThisMonth;
+  const planName = planNames[effectiveRole] ?? "Free";
+  const cvLimit = cvLimits[effectiveRole] ?? 0;
+  const cvsUsed = profile?.cvsUsedThisMonth ?? 0;
   const cvsRemaining = Math.max(0, cvLimit - cvsUsed);
   const cvPercent = cvLimit > 0 ? Math.min(100, (cvsUsed / cvLimit) * 100) : 0;
 
-  const totalJobs = profile._count.jobPostings;
-  const totalCandidates = profile._count.candidates;
+  const totalJobs = profile?._count.jobPostings ?? 0;
+  const totalCandidates = profile?._count.candidates ?? 0;
 
   const hasGrowth = [
     "RECRUITER_GROWTH",
@@ -73,20 +78,20 @@ export default async function RecruiterDashboardPage() {
     "RECRUITER_ENTERPRISE",
     "RECRUITER_SCALE",
     "RECRUITER_CUSTOM",
-  ].includes(role);
+  ].includes(effectiveRole);
 
   const hasBusiness = [
     "RECRUITER_BUSINESS",
     "RECRUITER_ENTERPRISE",
     "RECRUITER_SCALE",
     "RECRUITER_CUSTOM",
-  ].includes(role);
+  ].includes(effectiveRole);
 
   const hasEnterprise = [
     "RECRUITER_ENTERPRISE",
     "RECRUITER_SCALE",
     "RECRUITER_CUSTOM",
-  ].includes(role);
+  ].includes(effectiveRole);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">

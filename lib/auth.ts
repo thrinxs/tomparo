@@ -92,6 +92,8 @@ export const authOptions: NextAuthOptions = {
 
           // Team member path — check if invited team member
           let teamMembership = null;
+          let teamOwnerRole: string | null = null;
+
           if (!isRecruiterRole && !hasOwnProfile) {
             teamMembership = await prisma.recruiterTeamMember.findFirst({
               where: { userId: dbUser.id },
@@ -105,14 +107,25 @@ export const authOptions: NextAuthOptions = {
                 },
               },
             });
+
+            // Look up the plan of the company owner so team members
+            // inherit the correct feature access
+            if (teamMembership?.recruiter?.userId) {
+              const ownerUser = await prisma.user.findUnique({
+                where: { id: teamMembership.recruiter.userId },
+                select: { role: true },
+              });
+              teamOwnerRole = ownerUser?.role ?? null;
+            }
           }
 
-          token.isRecruiter       = isRecruiterRole || hasOwnProfile || !!teamMembership;
-          token.isTeamMember      = !!teamMembership;
-          token.teamRole          = teamMembership?.role ?? null;
-          token.teamRecruiterId   = teamMembership?.recruiterId ?? dbUser.recruiterProfile?.id ?? null;
+          token.isRecruiter        = isRecruiterRole || hasOwnProfile || !!teamMembership;
+          token.isTeamMember       = !!teamMembership;
+          token.teamRole           = teamMembership?.role ?? null;
+          token.teamOwnerRole      = teamOwnerRole;
+          token.teamRecruiterId    = teamMembership?.recruiterId ?? dbUser.recruiterProfile?.id ?? null;
           token.recruiterProfileId = dbUser.recruiterProfile?.id ?? teamMembership?.recruiterId ?? null;
-          token.companyName       = dbUser.recruiterProfile?.companyName ?? teamMembership?.recruiter?.companyName ?? null;
+          token.companyName        = dbUser.recruiterProfile?.companyName ?? teamMembership?.recruiter?.companyName ?? null;
         }
       }
 
@@ -135,6 +148,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).isRecruiter       = token.isRecruiter;
         (session.user as any).isTeamMember      = token.isTeamMember;
         (session.user as any).teamRole          = token.teamRole;
+        (session.user as any).teamOwnerRole     = token.teamOwnerRole;
         (session.user as any).teamRecruiterId   = token.teamRecruiterId;
         (session.user as any).recruiterProfileId = token.recruiterProfileId;
         (session.user as any).companyName       = token.companyName;

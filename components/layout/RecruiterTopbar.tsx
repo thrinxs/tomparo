@@ -19,6 +19,11 @@ export default function RecruiterTopbar({ onMenuClick }: Props) {
   const name = user?.name ?? "Recruiter";
   const email = user?.email ?? "";
   const role = user?.role as string | undefined;
+  const isTeamMember = !!user?.isTeamMember;
+  const teamOwnerRole = user?.teamOwnerRole as string | undefined;
+
+  // Team members show their company's plan, not their own role
+  const effectiveRole = isTeamMember ? teamOwnerRole : role;
 
   const initials = name
     .split(" ")
@@ -36,7 +41,7 @@ export default function RecruiterTopbar({ onMenuClick }: Props) {
     RECRUITER_CUSTOM: "Custom",
   };
 
-  const planName = role ? planNames[role] : null;
+  const planName = effectiveRole ? planNames[effectiveRole] : null;
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/5 bg-slate-950/80 px-4 sm:px-6 lg:px-8 backdrop-blur-xl">
@@ -54,11 +59,13 @@ export default function RecruiterTopbar({ onMenuClick }: Props) {
         {/* Page context — desktop only */}
         <div className="hidden lg:flex items-center gap-2 text-sm text-slate-400">
           <Building2 className="h-4 w-4 text-purple-400" />
-          <span>Recruiter Dashboard</span>
+          <span>{isTeamMember ? "Team Member" : "Recruiter Dashboard"}</span>
           {planName && (
             <>
               <span className="text-slate-700">·</span>
-              <span className="text-purple-400 font-medium">{planName} Plan</span>
+              <span className="text-purple-400 font-medium">
+                {planName} Plan{isTeamMember ? " (Team)" : ""}
+              </span>
             </>
           )}
         </div>
@@ -66,7 +73,7 @@ export default function RecruiterTopbar({ onMenuClick }: Props) {
         {/* Plan badge — mobile only */}
         {planName && (
           <span className="lg:hidden text-xs text-purple-400 font-medium px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20">
-            {planName}
+            {planName}{isTeamMember ? " (Team)" : ""}
           </span>
         )}
       </div>
@@ -106,13 +113,23 @@ export default function RecruiterTopbar({ onMenuClick }: Props) {
                 >
                   <Settings className="h-4 w-4" />Settings
                 </Link>
-                <Link
-                  href="/recruiter-pricing"
-                  onClick={() => setDropdownOpen(false)}
-                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white"
-                >
-                  <Building2 className="h-4 w-4" />Upgrade Plan
-                </Link>
+
+                {/* Owners can upgrade — team members cannot */}
+                {!isTeamMember ? (
+                  <Link
+                    href="/recruiter-pricing"
+                    onClick={() => setDropdownOpen(false)}
+                    className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white"
+                  >
+                    <Building2 className="h-4 w-4" />Upgrade Plan
+                  </Link>
+                ) : (
+                  <div className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-500 cursor-default">
+                    <Building2 className="h-4 w-4" />
+                    {planName ? `${planName} Plan (Team)` : "Team Member"}
+                  </div>
+                )}
+
                 <div className="my-1 border-t border-white/5" />
                 <button
                   onClick={() => signOut({ callbackUrl: "/signin" })}
