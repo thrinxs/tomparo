@@ -20,8 +20,12 @@ export async function proxy(request: NextRequest) {
     host === "admin.localhost:3000"; // local testing
 
   if (isAdminSubdomain) {
-    // Allow API routes through
+    // Allow API routes and static files through
     if (pathname.startsWith("/api/")) return NextResponse.next();
+    if (pathname.startsWith("/_next")) return NextResponse.next();
+
+    // Always allow the login page — prevents redirect loop
+    if (pathname === "/admin-login") return NextResponse.next();
 
     // Not logged in → admin login page
     if (!token) {
