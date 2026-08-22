@@ -9,9 +9,54 @@ export async function proxy(request: NextRequest) {
   });
 
   const { pathname } = request.nextUrl;
+  const host = request.headers.get("host") ?? "";
   const role = (token?.role as string) || "GUEST";
   const isRecruiter = (token as any)?.isRecruiter as boolean | undefined;
   const isTeamMember = (token as any)?.isTeamMember as boolean | undefined;
+
+  // ── Admin subdomain (admin.tomparo.com) ───────────────────────────────────
+  const isAdminSubdomain =
+    host === "admin.tomparo.com" ||
+    host === "admin.localhost:3000"; // local testing
+
+  if (isAdminSubdomain) {
+    // Allow API routes through
+    if (pathname.startsWith("/api/")) return NextResponse.next();
+
+    // Not logged in → admin login page
+    if (!token) {
+      return NextResponse.redirect(new URL("/admin-login", request.url));
+    }
+
+    // Logged in but not ADMIN role → admin login page
+    if (role !== "ADMIN") {
+      return NextResponse.redirect(new URL("/admin-login", request.url));
+    }
+
+    // ADMIN + on login page → go to dashboard
+    if (pathname === "/admin-login" || pathname === "/") {
+      // Check if admin code cookie is verified
+      const adminVerified = request.cookies.get("admin_verified")?.value;
+      if (adminVerified === "true") {
+        return NextResponse.redirect(new URL("/admin", request.url));
+      }
+      // Not verified yet — stay on login page
+      if (pathname === "/admin-login") return NextResponse.next();
+      return NextResponse.redirect(new URL("/admin-login", request.url));
+    }
+
+    // ADMIN + going to /admin/* → check code cookie
+    if (pathname.startsWith("/admin")) {
+      const adminVerified = request.cookies.get("admin_verified")?.value;
+      if (adminVerified !== "true") {
+        return NextResponse.redirect(new URL("/admin-login", request.url));
+      }
+      return NextResponse.next();
+    }
+
+    // Anything else on admin subdomain → redirect to admin
+    return NextResponse.redirect(new URL("/admin", request.url));
+  }
 
   // ── Public routes ──────────────────────────────────────────────────────────
   const publicRoutes = [
@@ -25,7 +70,7 @@ export async function proxy(request: NextRequest) {
     "/how-it-works",
     "/faq",
     "/success-stories",
-    "/jobs", 
+    "/jobs",
   ];
   if (publicRoutes.includes(pathname)) return NextResponse.next();
 
@@ -66,10 +111,11 @@ export async function proxy(request: NextRequest) {
     }
     return NextResponse.next();
   }
-  // Jobs pages are public
-if (pathname.startsWith("/jobs")) {
-  return NextResponse.next();
-}
+
+  // ── Jobs pages are public ──────────────────────────────────────────────────
+  if (pathname.startsWith("/jobs")) {
+    return NextResponse.next();
+  }
 
   // ── Staff routes ───────────────────────────────────────────────────────────
   if (pathname.startsWith("/staff")) {
@@ -87,13 +133,12 @@ if (pathname.startsWith("/jobs")) {
     return NextResponse.next();
   }
 
-  // ── Public candidate interview pages ──────────────────────────────────────────
+  // ── Public candidate interview pages ──────────────────────────────────────
   if (pathname.startsWith("/interview/")) {
     return NextResponse.next();
   }
 
   // ── Recruiter routes ───────────────────────────────────────────────────────
-  // Invite accept page is public — must be accessible without auth
   if (pathname.startsWith("/recruiter/invite/accept")) {
     return NextResponse.next();
   }
@@ -123,7 +168,7 @@ if (pathname.startsWith("/jobs")) {
     return NextResponse.next();
   }
 
-  // ── Premium routes — allow access, show locked screen internally ───────────
+  // ── Premium routes — allow access, gate internally ─────────────────────────
   const premiumRoutes = [
     "/dashboard/interview",
     "/dashboard/career",
@@ -136,20 +181,16 @@ if (pathname.startsWith("/jobs")) {
     }
     return NextResponse.next();
   }
-  // ── Jobs pages are public ──────────────────────────────────────────────────
-if (pathname.startsWith("/jobs")) {
-  return NextResponse.next();
-}
-if (pathname.startsWith("/api/track")) {
-  return NextResponse.next();
-}
+
+  if (pathname.startsWith("/api/track")) {
+    return NextResponse.next();
+  }
 
   // ── Dashboard routes ───────────────────────────────────────────────────────
   if (pathname.startsWith("/portfolio/")) return NextResponse.next();
 
   if (pathname.startsWith("/dashboard")) {
     if (!token) return NextResponse.redirect(new URL("/signin", request.url));
-    // Safety net — recruiters and team members should never land on job seeker dashboard
     if (
       token &&
       (
