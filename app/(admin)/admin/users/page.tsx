@@ -395,7 +395,7 @@ export default function AdminUsersPage() {
             const isTeamMember = user.teamMemberships.length > 0;
 
             return (
-              <div key={user.id} className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+              <div key={user.id} className="rounded-2xl border border-white/5 bg-white/[0.02]">
                 {/* Row */}
                 <div className="flex items-center gap-4 p-4">
                   {/* Avatar */}
@@ -541,7 +541,7 @@ export default function AdminUsersPage() {
             const ownerRole = company.user.role;
 
             return (
-              <div key={company.id} className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden">
+              <div key={company.id} className="rounded-2xl border border-white/5 bg-white/[0.02]">
                 {/* Company header */}
                 <div
                   className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/[0.02] transition"
