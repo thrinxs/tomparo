@@ -195,6 +195,8 @@ export async function proxy(request: NextRequest) {
 
   if (pathname.startsWith("/dashboard")) {
     if (!token) return NextResponse.redirect(new URL("/signin", request.url));
+    // ADMIN can visit dashboard freely for testing/support
+    if (role === "ADMIN") return NextResponse.next();
     if (
       token &&
       (

@@ -79,7 +79,7 @@ export const authOptions: NextAuthOptions = {
           token.role = dbUser.role || "FREE";
 
           // Consumer flags
-          token.isPremium = dbUser.role === "PREMIUM";
+          token.isPremium = dbUser.role === "PREMIUM" || dbUser.role === "ADMIN";
 
           // Staff flags
           token.isAdmin   = dbUser.role === "ADMIN";

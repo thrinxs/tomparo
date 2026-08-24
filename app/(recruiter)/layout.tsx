@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import RecruiterSidebar from "@/components/layout/RecruiterSidebar";
 import RecruiterTopbar from "@/components/layout/RecruiterTopbar";
+import AdminViewingBanner from "@/components/admin/AdminViewingBanner";
 
 export default function RecruiterLayout({
   children,
@@ -10,12 +12,13 @@ export default function RecruiterLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as any)?.role === "ADMIN";
 
   return (
     <div className="min-h-screen bg-slate-950">
       <RecruiterSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Overlay for mobile */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/60 lg:hidden"
@@ -29,6 +32,8 @@ export default function RecruiterLayout({
           {children}
         </main>
       </div>
+
+      {isAdmin && <AdminViewingBanner dashboardType="recruiter" />}
     </div>
   );
 }

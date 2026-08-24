@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard, Users, BarChart3, Settings,
-  Shield, CreditCard, FileText, Menu, X, LogOut,
+  Shield, CreditCard, FileText, Menu, X, LogOut, User,
   Bell, ChevronDown,
 } from "lucide-react";
 import { useState } from "react";
