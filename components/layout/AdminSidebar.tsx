@@ -5,8 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import {
-  LayoutDashboard, Users, BarChart3, Settings,
-  Shield, CreditCard, FileText, Menu, X, LogOut, User,
+  LayoutDashboard, Users, BarChart3, Settings, User,
+  Shield, CreditCard, FileText, Menu, X, LogOut,
   Bell, ChevronDown,
 } from "lucide-react";
 import { useState } from "react";
@@ -19,6 +19,7 @@ const navItems = [
   { href: "/admin/staff", label: "Staff", icon: Shield },
   { href: "/admin/content", label: "Content", icon: FileText },
   { href: "/admin/settings", label: "Settings", icon: Settings },
+  { href: "/admin/profile", label: "My Profile", icon: User },
 ];
 
 interface Props {

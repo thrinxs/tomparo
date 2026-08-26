@@ -150,6 +150,24 @@ export default async function AdminHomePage() {
       bg: "bg-slate-500/10",
       hover: "hover:border-slate-500/30",
     },
+    {
+      href: "/dashboard",
+      label: "Job Seeker View",
+      description: "Preview the job seeker dashboard as admin",
+      icon: Users,
+      color: "text-blue-400",
+      bg: "bg-blue-500/10",
+      hover: "hover:border-blue-500/30",
+    },
+    {
+      href: "/recruiter",
+      label: "Recruiter View",
+      description: "Preview the recruiter dashboard as admin",
+      icon: Building2,
+      color: "text-purple-400",
+      bg: "bg-purple-500/10",
+      hover: "hover:border-purple-500/30",
+    },
   ];
 
   const roleColors: Record<string, string> = {
