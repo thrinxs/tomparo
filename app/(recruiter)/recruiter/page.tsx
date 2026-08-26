@@ -24,6 +24,7 @@ export default async function RecruiterDashboardPage() {
   const isTeamMember = !!(session.user as any).isTeamMember;
   const teamRecruiterId = (session.user as any).teamRecruiterId as string | undefined;
   const teamOwnerRole = (session.user as any).teamOwnerRole as string | undefined;
+  const isAdmin = role === "ADMIN";
   const effectiveRole = (isTeamMember && teamOwnerRole) ? teamOwnerRole : role;
 
   // Get recruiter profile + counts
@@ -41,7 +42,7 @@ export default async function RecruiterDashboardPage() {
   });
 
   // If no profile yet (edge case — signed up via Google without recruiter flow)
-  if (!profile && !isTeamMember) {
+  if (!profile && !isTeamMember && role !== "ADMIN") {
     redirect("/recruiter-pricing");
   }
 
@@ -63,8 +64,8 @@ export default async function RecruiterDashboardPage() {
     RECRUITER_CUSTOM: 99999,
   };
 
-  const planName = planNames[effectiveRole] ?? "Free";
-  const cvLimit = cvLimits[effectiveRole] ?? 0;
+  const planName = isAdmin ? "Admin" : (planNames[effectiveRole] ?? "Free");
+  const cvLimit = isAdmin ? 99999 : (cvLimits[effectiveRole] ?? 0);
   const cvsUsed = profile?.cvsUsedThisMonth ?? 0;
   const cvsRemaining = Math.max(0, cvLimit - cvsUsed);
   const cvPercent = cvLimit > 0 ? Math.min(100, (cvsUsed / cvLimit) * 100) : 0;
@@ -78,20 +79,20 @@ export default async function RecruiterDashboardPage() {
     "RECRUITER_ENTERPRISE",
     "RECRUITER_SCALE",
     "RECRUITER_CUSTOM",
-  ].includes(effectiveRole);
+  ].includes(effectiveRole) || isAdmin;
 
   const hasBusiness = [
     "RECRUITER_BUSINESS",
     "RECRUITER_ENTERPRISE",
     "RECRUITER_SCALE",
     "RECRUITER_CUSTOM",
-  ].includes(effectiveRole);
+  ].includes(effectiveRole) || isAdmin;
 
   const hasEnterprise = [
     "RECRUITER_ENTERPRISE",
     "RECRUITER_SCALE",
     "RECRUITER_CUSTOM",
-  ].includes(effectiveRole);
+  ].includes(effectiveRole) || isAdmin;
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -102,7 +103,7 @@ export default async function RecruiterDashboardPage() {
           Welcome back, {(session.user as any).name?.split(" ")[0]} 👋
         </h1>
         <p className="text-slate-400 mt-1">
-          {profile.companyName} · {planName} Plan
+          {isAdmin ? "Admin Preview" : profile?.companyName} · {isAdmin ? "Full Access" : planName + " Plan"}
         </p>
       </div>
 
