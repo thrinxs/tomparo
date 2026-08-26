@@ -58,6 +58,20 @@ export async function proxy(request: NextRequest) {
       return NextResponse.next();
     }
 
+    // Allow preview routes on admin subdomain
+    if (
+      pathname.startsWith("/jobseeker_dashboard") ||
+      pathname.startsWith("/recruiter_dashboard") ||
+      pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/recruiter")
+    ) {
+      const adminVerified = request.cookies.get("admin_verified")?.value;
+      if (adminVerified !== "true") {
+        return NextResponse.redirect(new URL("/admin-login", request.url));
+      }
+      return NextResponse.next();
+    }
+
     // Anything else on admin subdomain → redirect to admin
     return NextResponse.redirect(new URL("/admin", request.url));
   }

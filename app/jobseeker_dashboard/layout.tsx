@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import AdminSidebar from "@/components/layout/AdminSidebar";
+import DashboardSidebar from "@/components/layout/DashboardSidebar";
+import DashboardTopbar from "@/components/layout/DashboardTopbar";
 import AdminDashboardToggle from "@/components/admin/AdminDashboardToggle";
 
-export default function AdminLayout({
+export default function JobSeekerDashboardLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -12,11 +13,10 @@ export default function AdminLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      <AdminSidebar
+    <div className="min-h-screen bg-background">
+      <DashboardSidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        onMenuClick={() => setSidebarOpen(true)}
       />
 
       {sidebarOpen && (
@@ -27,7 +27,8 @@ export default function AdminLayout({
       )}
 
       <div className="lg:pl-64">
-        <main className="min-h-screen p-4 sm:p-6 lg:p-8 pb-24">
+        <DashboardTopbar onMenuClick={() => setSidebarOpen(true)} />
+        <main className="min-h-[calc(100vh-4rem)] p-4 sm:p-6 lg:p-8 pb-24">
           {children}
         </main>
       </div>
