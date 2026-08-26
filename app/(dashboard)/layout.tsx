@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import DashboardSidebar from "@/components/layout/DashboardSidebar";
 import DashboardTopbar from "@/components/layout/DashboardTopbar";
 import AdminViewingBanner from "@/components/admin/AdminViewingBanner";
+import JobSeekerTour from "@/components/tour/JobSeekerTour";
 
 export default function DashboardLayout({
   children,
@@ -13,7 +14,8 @@ export default function DashboardLayout({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { data: session } = useSession();
-  const isAdmin = (session?.user as any)?.role === "ADMIN";
+  const user = session?.user as any;
+  const isAdmin = user?.role === "ADMIN";
 
   return (
     <div className="min-h-screen bg-background">
@@ -37,6 +39,9 @@ export default function DashboardLayout({
       </div>
 
       {isAdmin && <AdminViewingBanner dashboardType="jobseeker" />}
+
+      {/* Tour — only for non-admin users */}
+      {!isAdmin && session && <JobSeekerTour />}
     </div>
   );
 }

@@ -74,6 +74,7 @@ export default function DashboardSidebar({ isOpen, onClose }: Props) {
               key={item.href}
               href={item.href}
               onClick={onClose}
+              id={item.href === '/dashboard' ? 'nav-overview' : item.href === '/dashboard/resume' ? 'nav-resume' : item.href === '/dashboard/job' ? 'nav-job' : item.href === '/dashboard/apply' ? 'nav-apply' : item.href === '/dashboard/skills' ? 'nav-skills' : item.href === '/dashboard/interview' ? 'nav-interview' : item.href === '/dashboard/career' ? 'nav-career' : item.href === '/dashboard/chat' ? 'nav-chat' : item.href === '/dashboard/messages' ? 'nav-messages' : item.href === '/dashboard/portfolio' ? 'nav-portfolio' : item.href === '/dashboard/history' ? 'nav-history' : item.href === '/dashboard/settings' ? 'nav-settings' : undefined}
               className={`group flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition ${
                 isActive
                   ? "bg-blue-500/10 text-blue-400"
