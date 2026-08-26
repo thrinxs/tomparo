@@ -151,7 +151,7 @@ export default async function AdminHomePage() {
       hover: "hover:border-slate-500/30",
     },
     {
-      href: "/dashboard",
+      href: "https://www.tomparo.com/dashboard",
       label: "Job Seeker View",
       description: "Preview the job seeker dashboard as admin",
       icon: Users,
@@ -160,7 +160,7 @@ export default async function AdminHomePage() {
       hover: "hover:border-blue-500/30",
     },
     {
-      href: "/recruiter",
+      href: "https://www.tomparo.com/recruiter",
       label: "Recruiter View",
       description: "Preview the recruiter dashboard as admin",
       icon: Building2,
