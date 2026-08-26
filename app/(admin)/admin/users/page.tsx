@@ -90,14 +90,20 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
-function RoleSelector({ userId, currentRole, onUpdated }: {
+function RoleSelector({ userId, currentRole, onUpdated, onAssignTeam }: {
   userId: string; currentRole: string;
   onUpdated: (userId: string, newRole: string) => void;
+  onAssignTeam?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSelect = async (newRole: string) => {
+    if (newRole === "TEAM_MEMBER") {
+      setOpen(false);
+      onAssignTeam?.();
+      return;
+    }
     if (newRole === currentRole) { setOpen(false); return; }
     setLoading(true); setOpen(false);
     try {
@@ -130,6 +136,11 @@ function RoleSelector({ userId, currentRole, onUpdated }: {
                 {r === currentRole && <Check className="h-3 w-3 text-emerald-400" />}
               </button>
             ))}
+            <div className="my-1 border-t border-white/5" />
+            <button onClick={() => handleSelect("TEAM_MEMBER")}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-emerald-400 transition hover:bg-white/5">
+              <UserPlus className="h-3 w-3" />Assign to Team
+            </button>
           </div>
         </>
       )}
@@ -585,7 +596,7 @@ export default function AdminUsersPage() {
                     {new Date(user.createdAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
                   </p>
                   <div className="flex items-center gap-2 shrink-0">
-                    <RoleSelector userId={user.id} currentRole={user.role} onUpdated={handleRoleUpdated} />
+                    <RoleSelector userId={user.id} currentRole={user.role} onUpdated={handleRoleUpdated} onAssignTeam={() => setAssignModal(user)} />
                     <button onClick={() => toggleUser(user.id)}
                       className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-400 hover:text-white transition">
                       {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -754,7 +765,7 @@ export default function AdminUsersPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <RoleBadge role={company.user.role} />
-                          <RoleSelector userId={company.user.id} currentRole={company.user.role} onUpdated={handleRoleUpdated} />
+                          <RoleSelector userId={company.user.id} currentRole={company.user.role} onUpdated={handleRoleUpdated} onAssignTeam={() => setAssignModal({...company.user, phone: null, subscription: null, recruiterProfile: null, teamMemberships: [], usageTracking: []} as any)} />
                         </div>
                       </div>
                     </div>
@@ -786,7 +797,7 @@ export default function AdminUsersPage() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-slate-400">{member.role}</span>
-                                <RoleSelector userId={member.user.id} currentRole={member.user.role} onUpdated={handleRoleUpdated} />
+                                <RoleSelector userId={member.user.id} currentRole={member.user.role} onUpdated={handleRoleUpdated} onAssignTeam={() => setAssignModal({...member.user, phone: null, subscription: null, recruiterProfile: null, teamMemberships: [], usageTracking: []} as any)} />
                               </div>
                             </div>
                           ))}
