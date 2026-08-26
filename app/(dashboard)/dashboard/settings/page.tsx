@@ -1,5 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
+const JobSeekerTour = dynamic(() => import("@/components/tour/JobSeekerTour"), { ssr: false });
+
 import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -147,7 +150,8 @@ export default function SettingsPage() {
     }
   };
 
-  const isPremium = profile?.role === "PREMIUM";
+  const isPremium = profile?.role === "PREMIUM" || profile?.role === "ADMIN";
+  const [showTour, setShowTour] = useState(false);
 
   if (loading) {
     return (
@@ -470,6 +474,33 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+    {/* Tour */}
+      <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Platform Tour</h3>
+            <p className="mt-1 text-sm text-slate-400">
+              Replay the guided tour to learn about all dashboard features
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem("tomparo_jobseeker_tour_done");
+              setShowTour(true);
+            }}
+            className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400 hover:bg-blue-500/20 transition"
+          >
+            Restart Tour
+          </button>
+        </div>
+      </div>
+
+      {showTour && (
+        <JobSeekerTour
+          forceShow={true}
+          onClose={() => setShowTour(false)}
+        />
+      )}
     </div>
   );
 }
