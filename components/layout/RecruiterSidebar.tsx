@@ -7,7 +7,7 @@ import { useSession } from "next-auth/react";
 import {
   LayoutDashboard, Users, Briefcase, Upload, Mic, Mail,
   Bot, BarChart3, Settings, Lock, Rocket, FileText,
-  Kanban, Inbox, X, MessageSquare, FolderOpen, CheckSquare,
+  Kanban, Inbox, X, MessageSquare, FolderOpen, CheckSquare, Compass,
 } from "lucide-react";
 
 interface NavItem {
@@ -66,6 +66,7 @@ const navItems: NavItem[] = [
     requiredPlan: ["RECRUITER_BUSINESS", "RECRUITER_ENTERPRISE", "RECRUITER_SCALE", "RECRUITER_CUSTOM"],
   },
   { href: "/recruiter/settings", label: "Settings", icon: Settings, dividerBefore: true },
+  { href: "/recruiter/tour", label: "Platform Tour", icon: Compass },
 ];
 
 const planNames: Record<string, string> = {
@@ -163,6 +164,7 @@ export default function RecruiterSidebar({ isOpen, onClose }: Props) {
               <Link
                 href={locked ? "/recruiter-pricing" : item.href}
                 onClick={onClose}
+                id={item.href === "/recruiter" ? "rec-nav-overview" : item.href === "/recruiter/jobs" ? "rec-nav-jobs" : item.href === "/recruiter/candidates" ? "rec-nav-candidates" : item.href === "/recruiter/upload" ? "rec-nav-upload" : item.href === "/recruiter/pipeline" ? "rec-nav-pipeline" : item.href === "/recruiter/bulk" ? "rec-nav-bulk" : item.href === "/recruiter/team" ? "rec-nav-team" : item.href === "/recruiter/interviews" ? "rec-nav-interviews" : item.href === "/recruiter/emails" ? "rec-nav-emails" : item.href === "/recruiter/autopilot" ? "rec-nav-autopilot" : item.href === "/recruiter/analytics" ? "rec-nav-analytics" : item.href === "/recruiter/settings" ? "rec-nav-settings" : undefined}
                 className={`group flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition ${
                   isActive
                     ? "bg-purple-500/10 text-purple-400"

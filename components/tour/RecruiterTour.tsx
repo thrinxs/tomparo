@@ -4,10 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import TourBubble, { BubblePosition } from "./TourBubble";
 
-const TOUR_KEY = "tomparo_jobseeker_tour_done";
-const BUBBLE_W = 288;  // w-72
-const BUBBLE_H = 210;  // approximate rendered height
-const GAP = 14;        // gap between element and bubble
+const TOUR_KEY = "tomparo_recruiter_tour_done";
+const BUBBLE_W = 288;
+const BUBBLE_H = 210;
+const GAP = 14;
 
 type TourStep = {
   targetId: string | null;
@@ -20,58 +20,72 @@ const STEPS: TourStep[] = [
   {
     targetId: null,
     feature: "Welcome",
-    title: "Welcome to TomParo! 👋",
+    title: "Welcome to TomParo Recruiter! 👋",
     description:
-      "This quick tour shows you the key features of your dashboard. Takes less than a minute. Close anytime by clicking ×.",
+      "This quick tour walks you through the key features of your recruiter dashboard. Takes less than 2 minutes. Close anytime by clicking ×.",
   },
   {
-    targetId: "nav-resume",
-    feature: "CV Analysis",
-    title: "Analyse Your CV",
+    targetId: "rec-nav-upload",
+    feature: "CV Upload",
+    title: "Upload & Analyse CVs",
     description:
-      "Upload your CV (PDF, DOC, or DOCX) and get an ATS score, strengths, weaknesses, missing keywords, and quick wins — all powered by AI.",
+      "Upload a candidate's CV and get an instant AI-powered analysis — skills, experience, ATS score, and fit for your open roles.",
   },
   {
-    targetId: "nav-job",
-    feature: "Job Matching",
-    title: "Match a Job Description",
+    targetId: "rec-nav-jobs",
+    feature: "Job Postings",
+    title: "Post & Manage Jobs",
     description:
-      "Paste any job description and see exactly how well your CV matches it. You'll get a match score, skills gap, and specific advice on what to improve.",
+      "Create job listings, set requirements, and manage applications. Your plan determines how many active jobs you can post.",
   },
   {
-    targetId: "nav-apply",
-    feature: "Applications",
-    title: "Generate Cover Letters & Emails",
+    targetId: "rec-nav-candidates",
+    feature: "Candidates",
+    title: "Candidate Database",
     description:
-      "TomParo writes a tailored cover letter and application email for any role. Edit them and download as DOCX, ready to send.",
+      "All your candidates in one place. Filter, shortlist, reject, or move candidates through your hiring pipeline.",
   },
   {
-    targetId: "nav-skills",
-    feature: "Skill Gap",
-    title: "Skill Gap Analysis",
+    targetId: "rec-nav-pipeline",
+    feature: "Pipeline",
+    title: "Hiring Pipeline",
     description:
-      "Find out which skills you're missing for your target role. Get a personalised learning roadmap with resources to close those gaps fast.",
+      "Visual Kanban board for your hiring process. Drag candidates through stages — Applied, Shortlisted, Interview, Offer, Hired.",
   },
   {
-    targetId: "nav-interview",
-    feature: "Interview Coach",
-    title: "AI Interview Coaching",
+    targetId: "rec-nav-emails",
+    feature: "AI Emails",
+    title: "AI-Written Emails",
     description:
-      "Practice with AI-generated interview questions tailored to your role and level. Premium feature — upgrade to unlock full coaching and feedback.",
+      "Send interview invites, rejection letters, and follow-ups — all written by AI in seconds. Bulk send to multiple candidates at once.",
   },
   {
-    targetId: "nav-history",
-    feature: "History",
-    title: "Your Analysis History",
+    targetId: "rec-nav-interviews",
+    feature: "AI Interviews",
+    title: "AI Interview System",
     description:
-      "Every CV analysis, job match, and application you've generated is saved here. Review and track your progress over time.",
+      "Set up automated AI interviews (text, voice, or video). Candidates complete them on their own time — you review scored results.",
   },
   {
-    targetId: "nav-settings",
+    targetId: "rec-nav-team",
+    feature: "Team",
+    title: "Team Collaboration",
+    description:
+      "Invite colleagues to your recruiter account. Assign roles, share candidates, collaborate in the conference room, and manage tasks together.",
+  },
+  {
+    targetId: "rec-nav-analytics",
+    feature: "Analytics",
+    title: "Hiring Analytics",
+    description:
+      "Track your hiring funnel — CVs analysed, jobs posted, candidates shortlisted, time-to-hire, and more. Business plan and above.",
+  },
+  {
+    targetId: "rec-nav-settings",
     feature: "Settings",
-    title: "Your Account Settings",
+    title: "Account Settings",
     description:
-      "Update your profile, change your password, manage your subscription, or delete your account — all from one place.",
+      "Configure your company profile, manage your subscription, set up interview templates, and control team permissions.",
   },
 ];
 
@@ -84,7 +98,7 @@ function isMobile() {
 }
 
 function getPosition(targetId: string | null): BubblePosition {
-  // On mobile — sidebar is hidden, always show at bottom center
+  // On mobile — always center bottom (sidebar is hidden)
   if (isMobile()) {
     return {
       top: window.innerHeight - BUBBLE_H - 80,
@@ -94,7 +108,7 @@ function getPosition(targetId: string | null): BubblePosition {
     };
   }
 
-  // Step 1 — welcome: center of screen
+  // Welcome step — center
   if (!targetId) {
     return {
       top: window.innerHeight / 2 - BUBBLE_H / 2,
@@ -106,7 +120,6 @@ function getPosition(targetId: string | null): BubblePosition {
 
   const el = document.getElementById(targetId);
   if (!el) {
-    // Element not found — center fallback
     return {
       top: window.innerHeight / 2 - BUBBLE_H / 2,
       left: window.innerWidth / 2 - BUBBLE_W / 2,
@@ -119,15 +132,14 @@ function getPosition(targetId: string | null): BubblePosition {
   const elMidY = rect.top + rect.height / 2;
   const elMidX = rect.left + rect.width / 2;
 
-  const spaceRight  = window.innerWidth - rect.right;
-  const spaceLeft   = rect.left;
-  const spaceBelow  = window.innerHeight - rect.bottom;
-  const spaceAbove  = rect.top;
+  const spaceRight = window.innerWidth - rect.right;
+  const spaceLeft  = rect.left;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const spaceAbove = rect.top;
 
-  // ── Prefer RIGHT (sidebar items) ──────────────────────────────────────────
+  // Prefer right (sidebar items are on the left)
   if (spaceRight >= BUBBLE_W + GAP) {
     const bubbleTop = clamp(elMidY - BUBBLE_H / 2, 8, window.innerHeight - BUBBLE_H - 8);
-    // pointerOffset = where the arrow sits relative to bubble top
     const pointerOffset = clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24);
     return {
       top: bubbleTop,
@@ -137,7 +149,6 @@ function getPosition(targetId: string | null): BubblePosition {
     };
   }
 
-  // ── Try BELOW ─────────────────────────────────────────────────────────────
   if (spaceBelow >= BUBBLE_H + GAP) {
     const bubbleLeft = clamp(elMidX - BUBBLE_W / 2, 8, window.innerWidth - BUBBLE_W - 8);
     const pointerOffset = clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24);
@@ -149,7 +160,6 @@ function getPosition(targetId: string | null): BubblePosition {
     };
   }
 
-  // ── Try ABOVE ─────────────────────────────────────────────────────────────
   if (spaceAbove >= BUBBLE_H + GAP) {
     const bubbleLeft = clamp(elMidX - BUBBLE_W / 2, 8, window.innerWidth - BUBBLE_W - 8);
     const pointerOffset = clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24);
@@ -161,7 +171,6 @@ function getPosition(targetId: string | null): BubblePosition {
     };
   }
 
-  // ── Try LEFT ──────────────────────────────────────────────────────────────
   if (spaceLeft >= BUBBLE_W + GAP) {
     const bubbleTop = clamp(elMidY - BUBBLE_H / 2, 8, window.innerHeight - BUBBLE_H - 8);
     const pointerOffset = clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24);
@@ -173,7 +182,7 @@ function getPosition(targetId: string | null): BubblePosition {
     };
   }
 
-  // ── Fallback: center ──────────────────────────────────────────────────────
+  // Fallback center
   return {
     top: window.innerHeight / 2 - BUBBLE_H / 2,
     left: window.innerWidth / 2 - BUBBLE_W / 2,
@@ -187,7 +196,7 @@ interface Props {
   onClose?: () => void;
 }
 
-export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
+export default function RecruiterTour({ forceShow = false, onClose }: Props) {
   const [active, setActive]   = useState(false);
   const [step, setStep]       = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -195,18 +204,14 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
     top: 0, left: 0, pointerSide: "none", pointerOffset: 0,
   });
 
-  // Wait for client mount
   useEffect(() => { setMounted(true); }, []);
 
-  // Decide when to show
   useEffect(() => {
     if (!mounted) return;
-
     if (forceShow) {
       const t = setTimeout(() => { setStep(0); setActive(true); }, 300);
       return () => clearTimeout(t);
     }
-
     const t = setTimeout(() => {
       const done = localStorage.getItem(TOUR_KEY);
       if (!done) { setStep(0); setActive(true); }
@@ -214,7 +219,6 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
     return () => clearTimeout(t);
   }, [forceShow, mounted]);
 
-  // Recalculate position whenever step changes or window resizes
   const updatePosition = useCallback(() => {
     if (!active) return;
     setPosition(getPosition(STEPS[step].targetId));
@@ -246,7 +250,6 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
 
   return createPortal(
     <>
-      {/* Semi-transparent backdrop */}
       <div
         className="fixed inset-0 z-[9998] bg-black/25"
         onClick={() => handleClose()}

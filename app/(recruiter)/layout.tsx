@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import RecruiterSidebar from "@/components/layout/RecruiterSidebar";
 import RecruiterTopbar from "@/components/layout/RecruiterTopbar";
 import AdminViewingBanner from "@/components/admin/AdminViewingBanner";
+import RecruiterTour from "@/components/tour/RecruiterTour";
 
 export default function RecruiterLayout({
   children,
@@ -34,6 +35,7 @@ export default function RecruiterLayout({
       </div>
 
       {isAdmin && <AdminViewingBanner dashboardType="recruiter" />}
+      {!isAdmin && <RecruiterTour />}
     </div>
   );
 }
