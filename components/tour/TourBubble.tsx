@@ -27,57 +27,60 @@ export default function TourBubble({
 }: Props) {
   const { top, left, pointerSide, pointerOffset } = position;
 
-  const pointerClass: Record<string, string> = {
-    top: "bottom-full left-0 w-full h-3 flex items-end",
-    bottom: "top-full left-0 w-full h-3 flex items-start",
-    left: "right-full top-0 h-full w-3 flex items-center justify-end",
-    right: "left-full top-0 h-full w-3 flex items-center justify-start",
-    none: "hidden",
-  };
-
-  const pointerTriangle: Record<string, string> = {
-    top: "border-l-8 border-r-8 border-b-8 border-l-transparent border-r-transparent border-b-purple-600",
-    bottom: "border-l-8 border-r-8 border-t-8 border-l-transparent border-r-transparent border-t-purple-600",
-    left: "border-t-8 border-b-8 border-r-8 border-t-transparent border-b-transparent border-r-purple-600",
-    right: "border-t-8 border-b-8 border-l-8 border-t-transparent border-b-transparent border-l-purple-600",
-    none: "hidden",
-  };
-
-  const pointerStyle: Record<string, React.CSSProperties> = {
-    top: { marginLeft: pointerOffset },
-    bottom: { marginLeft: pointerOffset },
-    left: { marginTop: pointerOffset },
-    right: { marginTop: pointerOffset },
-    none: {},
-  };
-
   return (
     <div
       className="fixed z-[9999] w-72"
       style={{ top, left }}
     >
-      {/* Pointer — top */}
+      {/* Pointer — TOP (bubble is below element) */}
       {pointerSide === "top" && (
-        <div className="flex h-3 items-end" style={{ paddingLeft: pointerOffset }}>
-          <div className={`w-0 h-0 ${pointerTriangle.top}`} />
-        </div>
+        <div
+          className="absolute"
+          style={{
+            bottom: "100%",
+            left: pointerOffset,
+            width: 0,
+            height: 0,
+            borderLeft: "8px solid transparent",
+            borderRight: "8px solid transparent",
+            borderBottom: "10px solid #7c3aed",
+          }}
+        />
       )}
 
       {/* Main bubble */}
       <div className="relative rounded-2xl border border-purple-500/30 bg-slate-900 shadow-2xl shadow-purple-900/40">
 
-        {/* Left pointer */}
+        {/* Pointer — LEFT (bubble is to the right of element) */}
         {pointerSide === "left" && (
-          <div className="absolute -left-3 top-0 h-full flex items-center" style={{ marginTop: pointerOffset }}>
-            <div className={`w-0 h-0 ${pointerTriangle.left}`} />
-          </div>
+          <div
+            className="absolute"
+            style={{
+              right: "100%",
+              top: pointerOffset,
+              width: 0,
+              height: 0,
+              borderTop: "8px solid transparent",
+              borderBottom: "8px solid transparent",
+              borderRight: "10px solid #7c3aed",
+            }}
+          />
         )}
 
-        {/* Right pointer */}
+        {/* Pointer — RIGHT (bubble is to the left of element) */}
         {pointerSide === "right" && (
-          <div className="absolute -right-3 top-0 h-full flex items-center" style={{ marginTop: pointerOffset }}>
-            <div className={`w-0 h-0 ${pointerTriangle.right}`} />
-          </div>
+          <div
+            className="absolute"
+            style={{
+              left: "100%",
+              top: pointerOffset,
+              width: 0,
+              height: 0,
+              borderTop: "8px solid transparent",
+              borderBottom: "8px solid transparent",
+              borderLeft: "10px solid #7c3aed",
+            }}
+          />
         )}
 
         {/* Header */}
@@ -138,11 +141,20 @@ export default function TourBubble({
         </div>
       </div>
 
-      {/* Pointer — bottom */}
+      {/* Pointer — BOTTOM (bubble is above element) */}
       {pointerSide === "bottom" && (
-        <div className="flex h-3 items-start" style={{ paddingLeft: pointerOffset }}>
-          <div className={`w-0 h-0 ${pointerTriangle.bottom}`} />
-        </div>
+        <div
+          className="absolute"
+          style={{
+            top: "100%",
+            left: pointerOffset,
+            width: 0,
+            height: 0,
+            borderLeft: "8px solid transparent",
+            borderRight: "8px solid transparent",
+            borderTop: "10px solid #7c3aed",
+          }}
+        />
       )}
     </div>
   );

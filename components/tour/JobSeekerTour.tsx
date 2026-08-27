@@ -5,8 +5,9 @@ import { createPortal } from "react-dom";
 import TourBubble, { BubblePosition } from "./TourBubble";
 
 const TOUR_KEY = "tomparo_jobseeker_tour_done";
-const BUBBLE_WIDTH = 288;
-const BUBBLE_HEIGHT = 200;
+const BUBBLE_W = 288;  // w-72
+const BUBBLE_H = 210;  // approximate rendered height
+const GAP = 14;        // gap between element and bubble
 
 type TourStep = {
   targetId: string | null;
@@ -21,7 +22,7 @@ const STEPS: TourStep[] = [
     feature: "Welcome",
     title: "Welcome to TomParo! 👋",
     description:
-      "This quick tour will show you the key features of your dashboard. It takes less than a minute. You can close it anytime by clicking ×.",
+      "This quick tour shows you the key features of your dashboard. Takes less than a minute. Close anytime by clicking ×.",
   },
   {
     targetId: "nav-resume",
@@ -42,7 +43,7 @@ const STEPS: TourStep[] = [
     feature: "Applications",
     title: "Generate Cover Letters & Emails",
     description:
-      "TomParo writes a tailored cover letter and application email for any role. You can edit them and download as DOCX, ready to send.",
+      "TomParo writes a tailored cover letter and application email for any role. Edit them and download as DOCX, ready to send.",
   },
   {
     targetId: "nav-skills",
@@ -63,7 +64,7 @@ const STEPS: TourStep[] = [
     feature: "History",
     title: "Your Analysis History",
     description:
-      "Every CV analysis, job match, and application you've generated is saved here. Go back, review, and track your progress over time.",
+      "Every CV analysis, job match, and application you've generated is saved here. Review and track your progress over time.",
   },
   {
     targetId: "nav-settings",
@@ -74,11 +75,16 @@ const STEPS: TourStep[] = [
   },
 ];
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function getPosition(targetId: string | null): BubblePosition {
+  // Step 1 — welcome: center of screen
   if (!targetId) {
     return {
-      top: window.innerHeight / 2 - BUBBLE_HEIGHT / 2,
-      left: window.innerWidth / 2 - BUBBLE_WIDTH / 2,
+      top: window.innerHeight / 2 - BUBBLE_H / 2,
+      left: window.innerWidth / 2 - BUBBLE_W / 2,
       pointerSide: "none",
       pointerOffset: 0,
     };
@@ -86,63 +92,77 @@ function getPosition(targetId: string | null): BubblePosition {
 
   const el = document.getElementById(targetId);
   if (!el) {
+    // Element not found — center fallback
     return {
-      top: window.innerHeight / 2 - BUBBLE_HEIGHT / 2,
-      left: window.innerWidth / 2 - BUBBLE_WIDTH / 2,
+      top: window.innerHeight / 2 - BUBBLE_H / 2,
+      left: window.innerWidth / 2 - BUBBLE_W / 2,
       pointerSide: "none",
       pointerOffset: 0,
     };
   }
 
   const rect = el.getBoundingClientRect();
-  const elCenterY = rect.top + rect.height / 2;
-  const elCenterX = rect.left + rect.width / 2;
-  const padding = 12;
+  const elMidY = rect.top + rect.height / 2;
+  const elMidX = rect.left + rect.width / 2;
 
-  const spaceRight = window.innerWidth - rect.right;
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const spaceAbove = rect.top;
-  const spaceLeft = rect.left;
+  const spaceRight  = window.innerWidth - rect.right;
+  const spaceLeft   = rect.left;
+  const spaceBelow  = window.innerHeight - rect.bottom;
+  const spaceAbove  = rect.top;
 
-  if (spaceRight > BUBBLE_WIDTH + padding) {
+  // ── Prefer RIGHT (sidebar items) ──────────────────────────────────────────
+  if (spaceRight >= BUBBLE_W + GAP) {
+    const bubbleTop = clamp(elMidY - BUBBLE_H / 2, 8, window.innerHeight - BUBBLE_H - 8);
+    // pointerOffset = where the arrow sits relative to bubble top
+    const pointerOffset = clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24);
     return {
-      top: Math.max(8, Math.min(window.innerHeight - BUBBLE_HEIGHT - 8, elCenterY - BUBBLE_HEIGHT / 2)),
-      left: rect.right + padding,
+      top: bubbleTop,
+      left: rect.right + GAP,
       pointerSide: "left",
-      pointerOffset: Math.max(16, Math.min(BUBBLE_HEIGHT - 32, elCenterY - Math.max(8, elCenterY - BUBBLE_HEIGHT / 2))),
+      pointerOffset,
     };
   }
 
-  if (spaceBelow > BUBBLE_HEIGHT + padding) {
+  // ── Try BELOW ─────────────────────────────────────────────────────────────
+  if (spaceBelow >= BUBBLE_H + GAP) {
+    const bubbleLeft = clamp(elMidX - BUBBLE_W / 2, 8, window.innerWidth - BUBBLE_W - 8);
+    const pointerOffset = clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24);
     return {
-      top: rect.bottom + padding,
-      left: Math.max(8, Math.min(window.innerWidth - BUBBLE_WIDTH - 8, elCenterX - BUBBLE_WIDTH / 2)),
+      top: rect.bottom + GAP,
+      left: bubbleLeft,
       pointerSide: "top",
-      pointerOffset: Math.max(16, Math.min(BUBBLE_WIDTH - 32, elCenterX - Math.max(8, elCenterX - BUBBLE_WIDTH / 2))),
+      pointerOffset,
     };
   }
 
-  if (spaceAbove > BUBBLE_HEIGHT + padding) {
+  // ── Try ABOVE ─────────────────────────────────────────────────────────────
+  if (spaceAbove >= BUBBLE_H + GAP) {
+    const bubbleLeft = clamp(elMidX - BUBBLE_W / 2, 8, window.innerWidth - BUBBLE_W - 8);
+    const pointerOffset = clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24);
     return {
-      top: rect.top - BUBBLE_HEIGHT - padding,
-      left: Math.max(8, Math.min(window.innerWidth - BUBBLE_WIDTH - 8, elCenterX - BUBBLE_WIDTH / 2)),
+      top: rect.top - BUBBLE_H - GAP,
+      left: bubbleLeft,
       pointerSide: "bottom",
-      pointerOffset: Math.max(16, Math.min(BUBBLE_WIDTH - 32, elCenterX - Math.max(8, elCenterX - BUBBLE_WIDTH / 2))),
+      pointerOffset,
     };
   }
 
-  if (spaceLeft > BUBBLE_WIDTH + padding) {
+  // ── Try LEFT ──────────────────────────────────────────────────────────────
+  if (spaceLeft >= BUBBLE_W + GAP) {
+    const bubbleTop = clamp(elMidY - BUBBLE_H / 2, 8, window.innerHeight - BUBBLE_H - 8);
+    const pointerOffset = clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24);
     return {
-      top: Math.max(8, Math.min(window.innerHeight - BUBBLE_HEIGHT - 8, elCenterY - BUBBLE_HEIGHT / 2)),
-      left: rect.left - BUBBLE_WIDTH - padding,
+      top: bubbleTop,
+      left: rect.left - BUBBLE_W - GAP,
       pointerSide: "right",
-      pointerOffset: Math.max(16, Math.min(BUBBLE_HEIGHT - 32, elCenterY - Math.max(8, elCenterY - BUBBLE_HEIGHT / 2))),
+      pointerOffset,
     };
   }
 
+  // ── Fallback: center ──────────────────────────────────────────────────────
   return {
-    top: window.innerHeight / 2 - BUBBLE_HEIGHT / 2,
-    left: window.innerWidth / 2 - BUBBLE_WIDTH / 2,
+    top: window.innerHeight / 2 - BUBBLE_H / 2,
+    left: window.innerWidth / 2 - BUBBLE_W / 2,
     pointerSide: "none",
     pointerOffset: 0,
   };
@@ -154,41 +174,36 @@ interface Props {
 }
 
 export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
-  const [active, setActive] = useState(false);
-  const [step, setStep] = useState(0);
+  const [active, setActive]   = useState(false);
+  const [step, setStep]       = useState(0);
+  const [mounted, setMounted] = useState(false);
   const [position, setPosition] = useState<BubblePosition>({
     top: 0, left: 0, pointerSide: "none", pointerOffset: 0,
   });
-  const [mounted, setMounted] = useState(false);
 
+  // Wait for client mount
   useEffect(() => { setMounted(true); }, []);
 
+  // Decide when to show
   useEffect(() => {
     if (!mounted) return;
 
     if (forceShow) {
-      const t = setTimeout(() => {
-        setStep(0);
-        setActive(true);
-      }, 400);
+      const t = setTimeout(() => { setStep(0); setActive(true); }, 300);
       return () => clearTimeout(t);
     }
 
-    // Wait for sidebar to fully render before checking
     const t = setTimeout(() => {
       const done = localStorage.getItem(TOUR_KEY);
-      if (!done) {
-        setStep(0);
-        setActive(true);
-      }
+      if (!done) { setStep(0); setActive(true); }
     }, 1500);
     return () => clearTimeout(t);
   }, [forceShow, mounted]);
 
+  // Recalculate position whenever step changes or window resizes
   const updatePosition = useCallback(() => {
     if (!active) return;
-    const current = STEPS[step];
-    setPosition(getPosition(current.targetId));
+    setPosition(getPosition(STEPS[step].targetId));
   }, [active, step]);
 
   useEffect(() => {
@@ -207,9 +222,7 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
 
   const handleClose = (finished = false) => {
     setActive(false);
-    if (finished) {
-      localStorage.setItem(TOUR_KEY, "true");
-    }
+    if (finished) localStorage.setItem(TOUR_KEY, "true");
     onClose?.();
   };
 
@@ -219,8 +232,9 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
 
   return createPortal(
     <>
+      {/* Semi-transparent backdrop */}
       <div
-        className="fixed inset-0 z-[9998] bg-black/30 backdrop-blur-[1px]"
+        className="fixed inset-0 z-[9998] bg-black/25"
         onClick={() => handleClose()}
       />
       <TourBubble
