@@ -71,14 +71,14 @@ const STEPS: TourStep[] = [
     feature: "Team",
     title: "Team Collaboration",
     description:
-      "Invite colleagues to your recruiter account. Assign roles, share candidates, collaborate in the conference room, and manage tasks together.",
+      "Invite colleagues to your recruiter account. Assign roles, share candidates, and manage tasks together.",
   },
   {
     targetId: "rec-nav-analytics",
     feature: "Analytics",
     title: "Hiring Analytics",
     description:
-      "Track your hiring funnel — CVs analysed, jobs posted, candidates shortlisted, time-to-hire, and more. Business plan and above.",
+      "Track your hiring funnel — CVs analysed, jobs posted, candidates shortlisted, time-to-hire, and more.",
   },
   {
     targetId: "rec-nav-settings",
@@ -98,17 +98,6 @@ function isMobile() {
 }
 
 function getPosition(targetId: string | null): BubblePosition {
-  // On mobile — always center bottom (sidebar is hidden)
-  if (isMobile()) {
-    return {
-      top: window.innerHeight - BUBBLE_H - 80,
-      left: window.innerWidth / 2 - BUBBLE_W / 2,
-      pointerSide: "none",
-      pointerOffset: 0,
-    };
-  }
-
-  // Welcome step — center
   if (!targetId) {
     return {
       top: window.innerHeight / 2 - BUBBLE_H / 2,
@@ -137,52 +126,46 @@ function getPosition(targetId: string | null): BubblePosition {
   const spaceBelow = window.innerHeight - rect.bottom;
   const spaceAbove = rect.top;
 
-  // Prefer right (sidebar items are on the left)
   if (spaceRight >= BUBBLE_W + GAP) {
     const bubbleTop = clamp(elMidY - BUBBLE_H / 2, 8, window.innerHeight - BUBBLE_H - 8);
-    const pointerOffset = clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24);
     return {
       top: bubbleTop,
       left: rect.right + GAP,
       pointerSide: "left",
-      pointerOffset,
+      pointerOffset: clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24),
     };
   }
 
   if (spaceBelow >= BUBBLE_H + GAP) {
     const bubbleLeft = clamp(elMidX - BUBBLE_W / 2, 8, window.innerWidth - BUBBLE_W - 8);
-    const pointerOffset = clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24);
     return {
       top: rect.bottom + GAP,
       left: bubbleLeft,
       pointerSide: "top",
-      pointerOffset,
+      pointerOffset: clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24),
     };
   }
 
   if (spaceAbove >= BUBBLE_H + GAP) {
     const bubbleLeft = clamp(elMidX - BUBBLE_W / 2, 8, window.innerWidth - BUBBLE_W - 8);
-    const pointerOffset = clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24);
     return {
       top: rect.top - BUBBLE_H - GAP,
       left: bubbleLeft,
       pointerSide: "bottom",
-      pointerOffset,
+      pointerOffset: clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24),
     };
   }
 
   if (spaceLeft >= BUBBLE_W + GAP) {
     const bubbleTop = clamp(elMidY - BUBBLE_H / 2, 8, window.innerHeight - BUBBLE_H - 8);
-    const pointerOffset = clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24);
     return {
       top: bubbleTop,
       left: rect.left - BUBBLE_W - GAP,
       pointerSide: "right",
-      pointerOffset,
+      pointerOffset: clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24),
     };
   }
 
-  // Fallback center
   return {
     top: window.innerHeight / 2 - BUBBLE_H / 2,
     left: window.innerWidth / 2 - BUBBLE_W / 2,
@@ -194,9 +177,16 @@ function getPosition(targetId: string | null): BubblePosition {
 interface Props {
   forceShow?: boolean;
   onClose?: () => void;
+  onOpenSidebar?: () => void;
+  onCloseSidebar?: () => void;
 }
 
-export default function RecruiterTour({ forceShow = false, onClose }: Props) {
+export default function RecruiterTour({
+  forceShow = false,
+  onClose,
+  onOpenSidebar,
+  onCloseSidebar,
+}: Props) {
   const [active, setActive]   = useState(false);
   const [step, setStep]       = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -221,8 +211,17 @@ export default function RecruiterTour({ forceShow = false, onClose }: Props) {
 
   const updatePosition = useCallback(() => {
     if (!active) return;
-    setPosition(getPosition(STEPS[step].targetId));
-  }, [active, step]);
+    const targetId = STEPS[step].targetId;
+
+    if (isMobile() && targetId) {
+      onOpenSidebar?.();
+      setTimeout(() => {
+        setPosition(getPosition(targetId));
+      }, 350);
+    } else {
+      setPosition(getPosition(targetId));
+    }
+  }, [active, step, onOpenSidebar]);
 
   useEffect(() => {
     updatePosition();
@@ -240,6 +239,7 @@ export default function RecruiterTour({ forceShow = false, onClose }: Props) {
 
   const handleClose = (finished = false) => {
     setActive(false);
+    if (isMobile()) onCloseSidebar?.();
     if (finished) localStorage.setItem(TOUR_KEY, "true");
     onClose?.();
   };

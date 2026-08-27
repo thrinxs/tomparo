@@ -5,9 +5,9 @@ import { createPortal } from "react-dom";
 import TourBubble, { BubblePosition } from "./TourBubble";
 
 const TOUR_KEY = "tomparo_jobseeker_tour_done";
-const BUBBLE_W = 288;  // w-72
-const BUBBLE_H = 210;  // approximate rendered height
-const GAP = 14;        // gap between element and bubble
+const BUBBLE_W = 288;
+const BUBBLE_H = 210;
+const GAP = 14;
 
 type TourStep = {
   targetId: string | null;
@@ -84,17 +84,7 @@ function isMobile() {
 }
 
 function getPosition(targetId: string | null): BubblePosition {
-  // On mobile — sidebar is hidden, always show at bottom center
-  if (isMobile()) {
-    return {
-      top: window.innerHeight - BUBBLE_H - 80,
-      left: window.innerWidth / 2 - BUBBLE_W / 2,
-      pointerSide: "none",
-      pointerOffset: 0,
-    };
-  }
-
-  // Step 1 — welcome: center of screen
+  // Welcome step — always center
   if (!targetId) {
     return {
       top: window.innerHeight / 2 - BUBBLE_H / 2,
@@ -119,61 +109,51 @@ function getPosition(targetId: string | null): BubblePosition {
   const elMidY = rect.top + rect.height / 2;
   const elMidX = rect.left + rect.width / 2;
 
-  const spaceRight  = window.innerWidth - rect.right;
-  const spaceLeft   = rect.left;
-  const spaceBelow  = window.innerHeight - rect.bottom;
-  const spaceAbove  = rect.top;
+  const spaceRight = window.innerWidth - rect.right;
+  const spaceLeft  = rect.left;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const spaceAbove = rect.top;
 
-  // ── Prefer RIGHT (sidebar items) ──────────────────────────────────────────
   if (spaceRight >= BUBBLE_W + GAP) {
     const bubbleTop = clamp(elMidY - BUBBLE_H / 2, 8, window.innerHeight - BUBBLE_H - 8);
-    // pointerOffset = where the arrow sits relative to bubble top
-    const pointerOffset = clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24);
     return {
       top: bubbleTop,
       left: rect.right + GAP,
       pointerSide: "left",
-      pointerOffset,
+      pointerOffset: clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24),
     };
   }
 
-  // ── Try BELOW ─────────────────────────────────────────────────────────────
   if (spaceBelow >= BUBBLE_H + GAP) {
     const bubbleLeft = clamp(elMidX - BUBBLE_W / 2, 8, window.innerWidth - BUBBLE_W - 8);
-    const pointerOffset = clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24);
     return {
       top: rect.bottom + GAP,
       left: bubbleLeft,
       pointerSide: "top",
-      pointerOffset,
+      pointerOffset: clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24),
     };
   }
 
-  // ── Try ABOVE ─────────────────────────────────────────────────────────────
   if (spaceAbove >= BUBBLE_H + GAP) {
     const bubbleLeft = clamp(elMidX - BUBBLE_W / 2, 8, window.innerWidth - BUBBLE_W - 8);
-    const pointerOffset = clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24);
     return {
       top: rect.top - BUBBLE_H - GAP,
       left: bubbleLeft,
       pointerSide: "bottom",
-      pointerOffset,
+      pointerOffset: clamp(elMidX - bubbleLeft - 8, 12, BUBBLE_W - 24),
     };
   }
 
-  // ── Try LEFT ──────────────────────────────────────────────────────────────
   if (spaceLeft >= BUBBLE_W + GAP) {
     const bubbleTop = clamp(elMidY - BUBBLE_H / 2, 8, window.innerHeight - BUBBLE_H - 8);
-    const pointerOffset = clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24);
     return {
       top: bubbleTop,
       left: rect.left - BUBBLE_W - GAP,
       pointerSide: "right",
-      pointerOffset,
+      pointerOffset: clamp(elMidY - bubbleTop - 8, 12, BUBBLE_H - 24),
     };
   }
 
-  // ── Fallback: center ──────────────────────────────────────────────────────
   return {
     top: window.innerHeight / 2 - BUBBLE_H / 2,
     left: window.innerWidth / 2 - BUBBLE_W / 2,
@@ -185,9 +165,16 @@ function getPosition(targetId: string | null): BubblePosition {
 interface Props {
   forceShow?: boolean;
   onClose?: () => void;
+  onOpenSidebar?: () => void;
+  onCloseSidebar?: () => void;
 }
 
-export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
+export default function JobSeekerTour({
+  forceShow = false,
+  onClose,
+  onOpenSidebar,
+  onCloseSidebar,
+}: Props) {
   const [active, setActive]   = useState(false);
   const [step, setStep]       = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -195,18 +182,14 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
     top: 0, left: 0, pointerSide: "none", pointerOffset: 0,
   });
 
-  // Wait for client mount
   useEffect(() => { setMounted(true); }, []);
 
-  // Decide when to show
   useEffect(() => {
     if (!mounted) return;
-
     if (forceShow) {
       const t = setTimeout(() => { setStep(0); setActive(true); }, 300);
       return () => clearTimeout(t);
     }
-
     const t = setTimeout(() => {
       const done = localStorage.getItem(TOUR_KEY);
       if (!done) { setStep(0); setActive(true); }
@@ -214,11 +197,21 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
     return () => clearTimeout(t);
   }, [forceShow, mounted]);
 
-  // Recalculate position whenever step changes or window resizes
   const updatePosition = useCallback(() => {
     if (!active) return;
-    setPosition(getPosition(STEPS[step].targetId));
-  }, [active, step]);
+    const targetId = STEPS[step].targetId;
+
+    // On mobile with a targetId — open sidebar first then position
+    if (isMobile() && targetId) {
+      onOpenSidebar?.();
+      // Wait for sidebar animation to complete (300ms transition)
+      setTimeout(() => {
+        setPosition(getPosition(targetId));
+      }, 350);
+    } else {
+      setPosition(getPosition(targetId));
+    }
+  }, [active, step, onOpenSidebar]);
 
   useEffect(() => {
     updatePosition();
@@ -236,6 +229,8 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
 
   const handleClose = (finished = false) => {
     setActive(false);
+    // Close sidebar on mobile when tour ends
+    if (isMobile()) onCloseSidebar?.();
     if (finished) localStorage.setItem(TOUR_KEY, "true");
     onClose?.();
   };
@@ -246,7 +241,6 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
 
   return createPortal(
     <>
-      {/* Semi-transparent backdrop */}
       <div
         className="fixed inset-0 z-[9998] bg-black/25"
         onClick={() => handleClose()}

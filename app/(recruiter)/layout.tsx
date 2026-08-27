@@ -35,7 +35,12 @@ export default function RecruiterLayout({
       </div>
 
       {isAdmin && <AdminViewingBanner dashboardType="recruiter" />}
-      {!isAdmin && <RecruiterTour />}
+      {!isAdmin && (
+        <RecruiterTour
+          onOpenSidebar={() => setSidebarOpen(true)}
+          onCloseSidebar={() => setSidebarOpen(false)}
+        />
+      )}
     </div>
   );
 }

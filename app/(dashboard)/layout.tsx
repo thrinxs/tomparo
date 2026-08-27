@@ -39,7 +39,12 @@ export default function DashboardLayout({
       </div>
 
       {isAdmin && <AdminViewingBanner dashboardType="jobseeker" />}
-      {!isAdmin && <JobSeekerTour />}
+      {!isAdmin && (
+        <JobSeekerTour
+          onOpenSidebar={() => setSidebarOpen(true)}
+          onCloseSidebar={() => setSidebarOpen(false)}
+        />
+      )}
     </div>
   );
 }
