@@ -5,11 +5,11 @@ import { createPortal } from "react-dom";
 import TourBubble, { BubblePosition } from "./TourBubble";
 
 const TOUR_KEY = "tomparo_jobseeker_tour_done";
-const BUBBLE_WIDTH = 288; // w-72
-const BUBBLE_HEIGHT = 200; // approx
+const BUBBLE_WIDTH = 288;
+const BUBBLE_HEIGHT = 200;
 
 type TourStep = {
-  targetId: string | null; // null = center of screen
+  targetId: string | null;
   feature: string;
   title: string;
   description: string;
@@ -76,7 +76,6 @@ const STEPS: TourStep[] = [
 
 function getPosition(targetId: string | null): BubblePosition {
   if (!targetId) {
-    // Center of screen
     return {
       top: window.innerHeight / 2 - BUBBLE_HEIGHT / 2,
       left: window.innerWidth / 2 - BUBBLE_WIDTH / 2,
@@ -100,14 +99,12 @@ function getPosition(targetId: string | null): BubblePosition {
   const elCenterX = rect.left + rect.width / 2;
   const padding = 12;
 
-  // Prefer right side of element (sidebar items)
   const spaceRight = window.innerWidth - rect.right;
-  const spaceLeft = rect.left;
   const spaceBelow = window.innerHeight - rect.bottom;
   const spaceAbove = rect.top;
+  const spaceLeft = rect.left;
 
   if (spaceRight > BUBBLE_WIDTH + padding) {
-    // Place to the right
     return {
       top: Math.max(8, Math.min(window.innerHeight - BUBBLE_HEIGHT - 8, elCenterY - BUBBLE_HEIGHT / 2)),
       left: rect.right + padding,
@@ -117,7 +114,6 @@ function getPosition(targetId: string | null): BubblePosition {
   }
 
   if (spaceBelow > BUBBLE_HEIGHT + padding) {
-    // Place below
     return {
       top: rect.bottom + padding,
       left: Math.max(8, Math.min(window.innerWidth - BUBBLE_WIDTH - 8, elCenterX - BUBBLE_WIDTH / 2)),
@@ -127,7 +123,6 @@ function getPosition(targetId: string | null): BubblePosition {
   }
 
   if (spaceAbove > BUBBLE_HEIGHT + padding) {
-    // Place above
     return {
       top: rect.top - BUBBLE_HEIGHT - padding,
       left: Math.max(8, Math.min(window.innerWidth - BUBBLE_WIDTH - 8, elCenterX - BUBBLE_WIDTH / 2)),
@@ -137,7 +132,6 @@ function getPosition(targetId: string | null): BubblePosition {
   }
 
   if (spaceLeft > BUBBLE_WIDTH + padding) {
-    // Place to the left
     return {
       top: Math.max(8, Math.min(window.innerHeight - BUBBLE_HEIGHT - 8, elCenterY - BUBBLE_HEIGHT / 2)),
       left: rect.left - BUBBLE_WIDTH - padding,
@@ -146,7 +140,6 @@ function getPosition(targetId: string | null): BubblePosition {
     };
   }
 
-  // Fallback — center
   return {
     top: window.innerHeight / 2 - BUBBLE_HEIGHT / 2,
     left: window.innerWidth / 2 - BUBBLE_WIDTH / 2,
@@ -171,21 +164,26 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
+    if (!mounted) return;
+
     if (forceShow) {
-      setStep(0);
-      setActive(true);
-      return;
-    }
-    const done = localStorage.getItem(TOUR_KEY);
-    if (!done) {
-      // Small delay so sidebar renders first
       const t = setTimeout(() => {
         setStep(0);
         setActive(true);
-      }, 800);
+      }, 400);
       return () => clearTimeout(t);
     }
-  }, [forceShow]);
+
+    // Wait for sidebar to fully render before checking
+    const t = setTimeout(() => {
+      const done = localStorage.getItem(TOUR_KEY);
+      if (!done) {
+        setStep(0);
+        setActive(true);
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [forceShow, mounted]);
 
   const updatePosition = useCallback(() => {
     if (!active) return;
@@ -221,12 +219,10 @@ export default function JobSeekerTour({ forceShow = false, onClose }: Props) {
 
   return createPortal(
     <>
-      {/* Backdrop overlay — semi-transparent */}
       <div
         className="fixed inset-0 z-[9998] bg-black/30 backdrop-blur-[1px]"
         onClick={() => handleClose()}
       />
-
       <TourBubble
         step={step + 1}
         total={STEPS.length}

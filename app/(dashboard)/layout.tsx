@@ -39,9 +39,7 @@ export default function DashboardLayout({
       </div>
 
       {isAdmin && <AdminViewingBanner dashboardType="jobseeker" />}
-
-      {/* Tour — only for non-admin users */}
-      {!isAdmin && session && <JobSeekerTour />}
+      {!isAdmin && <JobSeekerTour />}
     </div>
   );
 }
