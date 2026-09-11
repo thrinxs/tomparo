@@ -96,12 +96,36 @@ export default function CvBuilderPage() {
   };
 
   const handleEmailCV = async () => {
+    if (!currentCVId) { toast.error("Save your CV first"); return; }
     if (!user?.email) { toast.error("No email on file"); return; }
     toast.loading("Sending CV to your email...", { id: "email-cv" });
-    // We'll implement DOCX download + email in Step 2
-    setTimeout(() => {
-      toast.success(`CV sent to ${user.email}`, { id: "email-cv" });
-    }, 1500);
+    try {
+      const res = await fetch(`/api/cv-builder/${currentCVId}/email`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) toast.success(`CV sent to ${user.email}`, { id: "email-cv" });
+      else toast.error(data.error || "Failed to send", { id: "email-cv" });
+    } catch {
+      toast.error("Network error", { id: "email-cv" });
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!currentCVId) { toast.error("Save your CV first"); return; }
+    toast.loading("Generating DOCX...", { id: "download-cv" });
+    try {
+      const res = await fetch(`/api/cv-builder/${currentCVId}/download`);
+      if (!res.ok) { toast.error("Failed to generate CV", { id: "download-cv" }); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${fullName || "CV"}_CV.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("CV downloaded!", { id: "download-cv" });
+    } catch {
+      toast.error("Network error", { id: "download-cv" });
+    }
   };
 
   const loadCV = async (id: string) => {
@@ -403,6 +427,10 @@ export default function CvBuilderPage() {
               <button onClick={handleEmailCV}
                 className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm text-slate-300 hover:bg-white/10 transition">
                 <Mail className="h-4 w-4" />Email to Me
+              </button>
+              <button onClick={handleDownload}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm text-slate-300 hover:bg-white/10 transition">
+                <Download className="h-4 w-4" />Download DOCX
               </button>
             </div>
 
