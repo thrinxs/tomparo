@@ -37,6 +37,9 @@ export default function Navbar() {
           <Link href="/#how-it-works" className="text-sm text-slate-400 transition hover:text-white">
             How it works
           </Link>
+          <Link href="/jobs" className="text-sm text-slate-400 transition hover:text-white">
+            Jobs
+          </Link>
           <Link href="/pricing" className="text-sm text-slate-400 transition hover:text-white">
             Pricing
           </Link>
@@ -77,6 +80,9 @@ export default function Navbar() {
             </Link>
             <Link href="/#how-it-works" onClick={() => setMobileOpen(false)} className="block rounded-xl px-4 py-3 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white">
               How it works
+            </Link>
+            <Link href="/jobs" onClick={() => setMobileOpen(false)} className="block rounded-xl px-4 py-3 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white">
+              Jobs
             </Link>
             <Link href="/pricing" onClick={() => setMobileOpen(false)} className="block rounded-xl px-4 py-3 text-sm text-slate-300 transition hover:bg-white/5 hover:text-white">
               Pricing
