@@ -7,7 +7,7 @@ import { useSession } from "next-auth/react";
 import {
   LayoutDashboard, FileText, Target, Mail, TrendingUp,
   MessageSquareText, Brain, MessageCircle, Inbox,
-  History, Settings, Lock, Crown, Zap, X, User, Compass,
+  History, Settings, Lock, Crown, Zap, X, User, Compass, ClipboardList,
 } from "lucide-react";
 
 interface NavItem {
@@ -20,6 +20,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/resume", label: "Resume", icon: FileText },
+  { href: "/dashboard/cv-builder", label: "CV Builder", icon: ClipboardList },
   { href: "/dashboard/job", label: "Job Match", icon: Target },
   { href: "/dashboard/apply", label: "Apply", icon: Mail },
   { href: "/dashboard/skills", label: "Skills", icon: TrendingUp },

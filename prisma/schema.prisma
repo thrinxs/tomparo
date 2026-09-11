@@ -22,6 +22,7 @@ model User {
   accounts       Account[]
   sessions       Session[]
   resumes        Resume[]
+  builtCVs       BuiltCV[]
   jobAnalyses    JobAnalysis[]
   applications   Application[]
   interviews     InterviewSession[]
@@ -814,4 +815,25 @@ model TeamNotification {
   link        String?
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BuiltCV {
+  id             String   @id @default(cuid())
+  userId         String
+  title          String   @default("My CV")
+  template       String   @default("basic")
+  fullName       String?
+  email          String?
+  phone          String?
+  location       String?
+  linkedin       String?
+  website        String?
+  summary        String?  @db.Text
+  experience     String?  @db.Text
+  education      String?  @db.Text
+  skills         String?  @db.Text
+  certifications String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
