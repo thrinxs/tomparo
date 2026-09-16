@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import {
-  LayoutDashboard, Users, BarChart3, Settings, User,
+  LayoutDashboard, Users, BarChart3, Settings, User, Briefcase,
   Shield, CreditCard, FileText, Menu, X, LogOut,
   Bell, ChevronDown,
 } from "lucide-react";
@@ -14,6 +14,7 @@ import { useState } from "react";
 const navItems = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: CreditCard },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/admin/staff", label: "Staff", icon: Shield },
