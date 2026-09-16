@@ -295,7 +295,7 @@ export default function AdminJobsPage() {
               className={inputClass} placeholder="Keyword (e.g. software engineer)" />
             <div className="grid grid-cols-2 gap-2">
               <select value={adzunaCountry} onChange={(e) => setAdzunaCountry(e.target.value)} className={inputClass}>
-                {[["ng","Nigeria"],["gb","UK"],["us","USA"],["ca","Canada"],["au","Australia"],["za","South Africa"]].map(([v,l]) => (
+                {[["gb","UK"],["us","USA"],["ca","Canada"],["au","Australia"],["za","South Africa"],["de","Germany"],["fr","France"],["in","India"],["br","Brazil"],["sg","Singapore"],["nl","Netherlands"],["at","Austria"],["pl","Poland"],["ru","Russia"],["nz","New Zealand"]].map(([v,l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
               </select>
