@@ -62,10 +62,25 @@ export async function POST(req: NextRequest) {
     if ((session?.user as any)?.role !== "ADMIN")
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
-    const { url, companyName } = await req.json();
+    const { url, companyName: providedName } = await req.json();
 
-    if (!url || !companyName)
-      return NextResponse.json({ error: "url and companyName required" }, { status: 400 });
+    if (!url)
+      return NextResponse.json({ error: "url is required" }, { status: 400 });
+
+    // Auto-detect company name from URL if not provided
+    let companyName = providedName;
+    if (!companyName) {
+      try {
+        const hostname = new URL(url).hostname;
+        companyName = hostname
+          .replace(/^www\./, "")
+          .split(".")[0]
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (c: string) => c.toUpperCase());
+      } catch {
+        companyName = "Unknown Company";
+      }
+    }
 
     const tomparoProfile = await prisma.recruiterProfile.findFirst({
       where: { companySlug: "tomparo-featured" },

@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Briefcase, Plus, RefreshCw, Loader2, Check, X,
-  Search, Filter, ExternalLink, Trash2, Edit,
-  Globe, Building2, Zap, ChevronDown, ChevronUp,
-  MapPin, Clock, DollarSign, AlertCircle, ScanLine,
+  ExternalLink, Trash2, Globe, Building2, Zap,
+  ChevronDown, ChevronUp, MapPin, Clock, AlertCircle,
+  ScanLine, Search, CheckSquare, Square, MinusSquare,
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 
@@ -24,6 +24,13 @@ const APPROVAL_COLORS: Record<string, string> = {
 
 const TYPE_OPTIONS = ["FULL_TIME","PART_TIME","CONTRACT","REMOTE","HYBRID"];
 
+const COUNTRIES = [
+  ["gb","UK"],["us","USA"],["ca","Canada"],["au","Australia"],
+  ["za","South Africa"],["de","Germany"],["fr","France"],
+  ["in","India"],["br","Brazil"],["sg","Singapore"],
+  ["nl","Netherlands"],["at","Austria"],["pl","Poland"],["nz","New Zealand"],
+];
+
 export default function AdminJobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -32,6 +39,10 @@ export default function AdminJobsPage() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [expandedJob, setExpandedJob] = useState<string|null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string|null>(null);
+
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   // New job form
   const [showForm, setShowForm] = useState(false);
@@ -46,9 +57,9 @@ export default function AdminJobsPage() {
   const [formSourceCompany, setFormSourceCompany] = useState("");
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  // Adzuna fetch
+  // Adzuna
   const [adzunaKeyword, setAdzunaKeyword] = useState("software engineer");
-  const [adzunaCountry, setAdzunaCountry] = useState("ng");
+  const [adzunaCountry, setAdzunaCountry] = useState("gb");
   const [adzunaPages, setAdzunaPages] = useState("2");
   const [adzunaLoading, setAdzunaLoading] = useState(false);
 
@@ -56,6 +67,7 @@ export default function AdminJobsPage() {
   const [scrapeUrl, setScrapeUrl] = useState("");
   const [scrapeCompany, setScrapeCompany] = useState("");
   const [scrapeLoading, setScrapeLoading] = useState(false);
+  const [findingUrl, setFindingUrl] = useState(false);
   const [sources, setSources] = useState<any[]>([]);
 
   // Cleanup
@@ -63,6 +75,7 @@ export default function AdminJobsPage() {
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
+    setSelected(new Set());
     try {
       const params = new URLSearchParams();
       if (tab !== "all") params.set("approvalStatus", tab.toUpperCase());
@@ -83,6 +96,63 @@ export default function AdminJobsPage() {
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
   useEffect(() => { fetchSources(); }, [fetchSources]);
 
+  // ── Selection helpers ──
+  const allSelected = jobs.length > 0 && selected.size === jobs.length;
+  const someSelected = selected.size > 0 && !allSelected;
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(jobs.map((j) => j.id)));
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  // ── Bulk actions ──
+  const bulkAction = async (action: "approve" | "reject" | "delete") => {
+    if (!selected.size) return;
+    setBulkLoading(true);
+
+    const ids = Array.from(selected);
+    let success = 0;
+
+    for (const jobId of ids) {
+      try {
+        if (action === "delete") {
+          const res = await fetch("/api/admin/jobs", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jobId }),
+          });
+          if ((await res.json()).success) success++;
+        } else {
+          const res = await fetch("/api/admin/jobs", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jobId,
+              approvalStatus: action === "approve" ? "APPROVED" : "REJECTED",
+            }),
+          });
+          if ((await res.json()).success) success++;
+        }
+      } catch { /* continue */ }
+    }
+
+    toast.success(`${success} job${success !== 1 ? "s" : ""} ${action}d`);
+    setBulkLoading(false);
+    fetchJobs();
+  };
+
+  // ── Single actions ──
   const handleApprove = async (jobId: string) => {
     setActionLoadingId(jobId);
     const res = await fetch("/api/admin/jobs", {
@@ -90,9 +160,7 @@ export default function AdminJobsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jobId, approvalStatus: "APPROVED" }),
     });
-    const data = await res.json();
-    if (data.success) { toast.success("Job approved — now live!"); fetchJobs(); }
-    else toast.error(data.error || "Failed");
+    if ((await res.json()).success) { toast.success("Approved!"); fetchJobs(); }
     setActionLoadingId(null);
   };
 
@@ -103,9 +171,7 @@ export default function AdminJobsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jobId, approvalStatus: "REJECTED" }),
     });
-    const data = await res.json();
-    if (data.success) { toast.success("Job rejected"); fetchJobs(); }
-    else toast.error(data.error || "Failed");
+    if ((await res.json()).success) { toast.success("Rejected"); fetchJobs(); }
     setActionLoadingId(null);
   };
 
@@ -117,9 +183,7 @@ export default function AdminJobsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jobId }),
     });
-    const data = await res.json();
-    if (data.success) { toast.success("Job deleted"); fetchJobs(); }
-    else toast.error(data.error || "Failed");
+    if ((await res.json()).success) { toast.success("Deleted"); fetchJobs(); }
     setActionLoadingId(null);
   };
 
@@ -142,11 +206,9 @@ export default function AdminJobsPage() {
       toast.success("Job posted!");
       setShowForm(false);
       setFormTitle(""); setFormDesc(""); setFormLocation("");
-      setFormType("FULL_TIME"); setFormSalaryMin(""); setFormSalaryMax("");
-      setFormDeadline(""); setFormExtUrl(""); setFormSourceCompany("");
       fetchJobs();
     } else {
-      toast.error(data.error || "Failed to post job");
+      toast.error(data.error || "Failed");
     }
     setFormSubmitting(false);
   };
@@ -169,18 +231,43 @@ export default function AdminJobsPage() {
     setAdzunaLoading(false);
   };
 
+  // Find career URL from company name
+  const handleFindUrl = async () => {
+    if (!scrapeCompany.trim()) { toast.error("Enter a company name first"); return; }
+    setFindingUrl(true);
+    toast.loading(`Finding career page for ${scrapeCompany}...`, { id: "find-url" });
+    try {
+      const res = await fetch("/api/admin/jobs/find-careers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyName: scrapeCompany }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setScrapeUrl(data.url);
+        toast.success("Career page found!", { id: "find-url" });
+      } else {
+        toast.error(data.error || "Could not find career page", { id: "find-url" });
+      }
+    } catch {
+      toast.error("Network error", { id: "find-url" });
+    }
+    setFindingUrl(false);
+  };
+
   const handleScrape = async () => {
-    if (!scrapeUrl || !scrapeCompany) { toast.error("URL and company name required"); return; }
+    if (!scrapeUrl) { toast.error("URL is required"); return; }
     setScrapeLoading(true);
-    toast.loading(`Scraping ${scrapeCompany}...`, { id: "scrape" });
+    const displayName = scrapeCompany || new URL(scrapeUrl).hostname.replace("www.", "");
+    toast.loading(`Scraping ${displayName}...`, { id: "scrape" });
     const res = await fetch("/api/admin/jobs/scrape", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: scrapeUrl, companyName: scrapeCompany }),
+      body: JSON.stringify({ url: scrapeUrl, companyName: scrapeCompany || null }),
     });
     const data = await res.json();
     if (data.success) {
-      toast.success(`Found ${data.imported} new jobs from ${scrapeCompany}`, { id: "scrape" });
+      toast.success(`Found ${data.imported} new jobs`, { id: "scrape" });
       setScrapeUrl(""); setScrapeCompany("");
       fetchJobs(); fetchSources();
     } else {
@@ -191,7 +278,7 @@ export default function AdminJobsPage() {
 
   const handleCleanup = async () => {
     setCleanupLoading(true);
-    const secret = prompt("Enter admin secret (first 16 chars of NEXTAUTH_SECRET):");
+    const secret = prompt("Enter first 16 chars of NEXTAUTH_SECRET:");
     if (!secret) { setCleanupLoading(false); return; }
     const res = await fetch("/api/admin/jobs/cleanup", {
       method: "POST",
@@ -253,11 +340,11 @@ export default function AdminJobsPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Min Salary (₦)</label>
+              <label className="text-xs text-slate-400 mb-1 block">Min Salary</label>
               <input value={formSalaryMin} onChange={(e) => setFormSalaryMin(e.target.value)} className={inputClass} placeholder="e.g. 200000" type="number" />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">Max Salary (₦)</label>
+              <label className="text-xs text-slate-400 mb-1 block">Max Salary</label>
               <input value={formSalaryMax} onChange={(e) => setFormSalaryMax(e.target.value)} className={inputClass} placeholder="e.g. 500000" type="number" />
             </div>
             <div>
@@ -265,12 +352,12 @@ export default function AdminJobsPage() {
               <input value={formDeadline} onChange={(e) => setFormDeadline(e.target.value)} className={inputClass} type="date" />
             </div>
             <div>
-              <label className="text-xs text-slate-400 mb-1 block">External Apply URL (optional)</label>
+              <label className="text-xs text-slate-400 mb-1 block">External Apply URL</label>
               <input value={formExtUrl} onChange={(e) => setFormExtUrl(e.target.value)} className={inputClass} placeholder="https://company.com/apply" />
             </div>
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Source Company (if external)</label>
-              <input value={formSourceCompany} onChange={(e) => setFormSourceCompany(e.target.value)} className={inputClass} placeholder="e.g. Flutterwave (leave blank for TomParo)" />
+              <input value={formSourceCompany} onChange={(e) => setFormSourceCompany(e.target.value)} className={inputClass} placeholder="Leave blank for TomParo Featured" />
             </div>
             <div className="sm:col-span-2 flex gap-2 justify-end">
               <button type="button" onClick={() => setShowForm(false)} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 hover:text-white transition">Cancel</button>
@@ -282,25 +369,24 @@ export default function AdminJobsPage() {
         </div>
       )}
 
-      {/* Adzuna + Scraper tools */}
+      {/* Adzuna + Scraper */}
       <div className="grid gap-4 md:grid-cols-2">
         {/* Adzuna */}
         <div className="rounded-2xl border border-purple-500/20 bg-purple-500/5 p-5">
           <div className="flex items-center gap-2 mb-3">
             <Globe className="h-4 w-4 text-purple-400" />
             <p className="text-sm font-semibold text-white">Fetch from Adzuna</p>
+            <span className="text-xs text-slate-500">(Global job boards)</span>
           </div>
           <div className="space-y-2">
             <input value={adzunaKeyword} onChange={(e) => setAdzunaKeyword(e.target.value)}
               className={inputClass} placeholder="Keyword (e.g. software engineer)" />
             <div className="grid grid-cols-2 gap-2">
               <select value={adzunaCountry} onChange={(e) => setAdzunaCountry(e.target.value)} className={inputClass}>
-                {[["gb","UK"],["us","USA"],["ca","Canada"],["au","Australia"],["za","South Africa"],["de","Germany"],["fr","France"],["in","India"],["br","Brazil"],["sg","Singapore"],["nl","Netherlands"],["at","Austria"],["pl","Poland"],["ru","Russia"],["nz","New Zealand"]].map(([v,l]) => (
-                  <option key={v} value={v}>{l}</option>
-                ))}
+                {COUNTRIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
               <select value={adzunaPages} onChange={(e) => setAdzunaPages(e.target.value)} className={inputClass}>
-                {["1","2","3","4","5"].map((p) => <option key={p} value={p}>{p} page{p !== "1" ? "s" : ""}</option>)}
+                {["1","2","3","4","5"].map((p) => <option key={p} value={p}>{p} page{p !== "1" ? "s" : ""} ({parseInt(p) * 20} jobs)</option>)}
               </select>
             </div>
             <button onClick={handleAdzunaFetch} disabled={adzunaLoading}
@@ -316,13 +402,29 @@ export default function AdminJobsPage() {
           <div className="flex items-center gap-2 mb-3">
             <ScanLine className="h-4 w-4 text-amber-400" />
             <p className="text-sm font-semibold text-white">Scrape Career Page</p>
+            <span className="text-xs text-slate-500">(URL or name)</span>
           </div>
           <div className="space-y-2">
-            <input value={scrapeCompany} onChange={(e) => setScrapeCompany(e.target.value)}
-              className={inputClass} placeholder="Company name (e.g. Flutterwave)" />
+            {/* Company name with auto-find */}
+            <div className="flex gap-2">
+              <input value={scrapeCompany} onChange={(e) => setScrapeCompany(e.target.value)}
+                className={inputClass} placeholder="Company name (optional — auto-detected from URL)" />
+              <button onClick={handleFindUrl} disabled={findingUrl || !scrapeCompany.trim()}
+                title="Auto-find career page URL from company name"
+                className="shrink-0 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 text-amber-400 hover:bg-amber-500/20 transition disabled:opacity-40">
+                {findingUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              </button>
+            </div>
+
+            {/* URL */}
             <input value={scrapeUrl} onChange={(e) => setScrapeUrl(e.target.value)}
-              className={inputClass} placeholder="Career page URL (e.g. https://flutterwave.com/ng/careers)" />
-            <button onClick={handleScrape} disabled={scrapeLoading}
+              className={inputClass} placeholder="Career page URL (required — or click 🔍 to find from name)" />
+
+            <p className="text-[10px] text-slate-500">
+              💡 Enter company name → click 🔍 to auto-find URL, or paste URL directly (name is optional)
+            </p>
+
+            <button onClick={handleScrape} disabled={scrapeLoading || !scrapeUrl}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 transition disabled:opacity-50">
               {scrapeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}
               Scrape & Extract Jobs
@@ -330,12 +432,16 @@ export default function AdminJobsPage() {
           </div>
 
           {sources.length > 0 && (
-            <div className="mt-3 space-y-1.5">
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Recently scraped</p>
-              {sources.slice(0, 3).map((s) => (
+            <div className="mt-3 space-y-1.5 border-t border-white/5 pt-3">
+              <p className="text-xs text-slate-500 font-medium">Recently scraped</p>
+              {sources.slice(0, 4).map((s) => (
                 <div key={s.id} className="flex items-center justify-between text-xs">
                   <span className="text-slate-300 truncate">{s.companyName}</span>
-                  <span className="text-slate-500 shrink-0 ml-2">{s.jobsFound} jobs</span>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    <span className="text-slate-500">{s.jobsFound} jobs</span>
+                    <button onClick={() => { setScrapeCompany(s.companyName); setScrapeUrl(s.careerUrl); }}
+                      className="text-amber-400 hover:text-amber-300 text-[10px]">Re-scan</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -363,11 +469,35 @@ export default function AdminJobsPage() {
             <option value="RECRUITER">Recruiter</option>
           </select>
           <button onClick={fetchJobs} disabled={loading}
-            className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-400 hover:text-white transition disabled:opacity-50">
+            className="rounded-xl border border-white/10 bg-white/5 p-2 text-slate-400 hover:text-white transition">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900 px-4 py-3">
+          <span className="text-sm text-white font-medium">{selected.size} selected</span>
+          <div className="flex items-center gap-2 ml-auto">
+            <button onClick={() => bulkAction("approve")} disabled={bulkLoading}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-400 hover:bg-emerald-500/20 transition disabled:opacity-50">
+              {bulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              Approve All
+            </button>
+            <button onClick={() => bulkAction("reject")} disabled={bulkLoading}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-400 hover:bg-amber-500/20 transition disabled:opacity-50">
+              <X className="h-3.5 w-3.5" />Reject All
+            </button>
+            <button onClick={() => { if (confirm(`Delete ${selected.size} jobs?`)) bulkAction("delete"); }} disabled={bulkLoading}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20 transition disabled:opacity-50">
+              <Trash2 className="h-3.5 w-3.5" />Delete All
+            </button>
+            <button onClick={() => setSelected(new Set())}
+              className="text-slate-500 hover:text-white transition text-sm">Clear</button>
+          </div>
+        </div>
+      )}
 
       <p className="text-xs text-slate-500">{total} job{total !== 1 ? "s" : ""} found</p>
 
@@ -381,13 +511,38 @@ export default function AdminJobsPage() {
           No jobs found in this category
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
+          {/* Select all row */}
+          <div className="flex items-center gap-3 px-4 py-2">
+            <button onClick={toggleAll} className="text-slate-400 hover:text-white transition shrink-0">
+              {allSelected ? (
+                <CheckSquare className="h-4 w-4 text-blue-400" />
+              ) : someSelected ? (
+                <MinusSquare className="h-4 w-4 text-blue-400" />
+              ) : (
+                <Square className="h-4 w-4" />
+              )}
+            </button>
+            <span className="text-xs text-slate-500">
+              {allSelected ? "Deselect all" : `Select all ${jobs.length} jobs`}
+            </span>
+          </div>
+
           {jobs.map((job) => {
             const expanded = expandedJob === job.id;
+            const isSelected = selected.has(job.id);
+
             return (
-              <div key={job.id} className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-visible">
-                <div className="flex items-start gap-4 p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white">
+              <div key={job.id}
+                className={`rounded-2xl border bg-white/[0.02] overflow-visible transition ${isSelected ? "border-blue-500/30 bg-blue-500/5" : "border-white/5"}`}>
+                <div className="flex items-start gap-3 p-4">
+                  {/* Checkbox */}
+                  <button onClick={() => toggleOne(job.id)} className="mt-1 text-slate-400 hover:text-blue-400 transition shrink-0">
+                    {isSelected ? <CheckSquare className="h-4 w-4 text-blue-400" /> : <Square className="h-4 w-4" />}
+                  </button>
+
+                  {/* Company avatar */}
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white">
                     {(job.sourceCompanyName || job.recruiter?.companyName || "T")[0]}
                   </div>
 
@@ -406,7 +561,9 @@ export default function AdminJobsPage() {
                       {job.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{job.location}</span>}
                       {job.deadline && (
                         <span className={`flex items-center gap-1 ${new Date(job.deadline) < new Date() ? "text-red-400" : ""}`}>
-                          <AlertCircle className="h-3 w-3" />Deadline: {new Date(job.deadline).toLocaleDateString("en-NG")}
+                          <AlertCircle className="h-3 w-3" />
+                          {new Date(job.deadline) < new Date() ? "Expired: " : "Deadline: "}
+                          {new Date(job.deadline).toLocaleDateString("en-NG")}
                         </span>
                       )}
                       <span>{job._count?.applications ?? 0} applications</span>
@@ -414,18 +571,31 @@ export default function AdminJobsPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {job.approvalStatus === "PENDING" && (
                       <>
                         <button onClick={() => handleApprove(job.id)} disabled={actionLoadingId === job.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-500/20 transition disabled:opacity-50">
-                          {actionLoadingId === job.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}Approve
+                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-400 hover:bg-emerald-500/20 transition disabled:opacity-50">
+                          {actionLoadingId === job.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                          Approve
                         </button>
                         <button onClick={() => handleReject(job.id)} disabled={actionLoadingId === job.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20 transition disabled:opacity-50">
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-xs text-red-400 hover:bg-red-500/20 transition disabled:opacity-50">
                           <X className="h-3 w-3" />Reject
                         </button>
                       </>
+                    )}
+                    {job.approvalStatus === "APPROVED" && (
+                      <button onClick={() => handleReject(job.id)} disabled={actionLoadingId === job.id}
+                        className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-400 hover:bg-amber-500/20 transition disabled:opacity-50">
+                        Unpublish
+                      </button>
+                    )}
+                    {job.approvalStatus === "REJECTED" && (
+                      <button onClick={() => handleApprove(job.id)} disabled={actionLoadingId === job.id}
+                        className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-400 hover:bg-emerald-500/20 transition disabled:opacity-50">
+                        Re-approve
+                      </button>
                     )}
                     {job.externalUrl && (
                       <a href={job.externalUrl} target="_blank" rel="noopener noreferrer"
@@ -434,7 +604,7 @@ export default function AdminJobsPage() {
                       </a>
                     )}
                     <button onClick={() => handleDelete(job.id)} disabled={actionLoadingId === job.id}
-                      className="rounded-lg border border-red-500/20 bg-red-500/10 p-1.5 text-red-400 hover:bg-red-500/20 transition disabled:opacity-50">
+                      className="rounded-lg border border-red-500/20 bg-red-500/10 p-1.5 text-red-400 hover:bg-red-500/20 transition">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                     <button onClick={() => setExpandedJob(expanded ? null : job.id)}
@@ -445,7 +615,7 @@ export default function AdminJobsPage() {
                 </div>
 
                 {expanded && (
-                  <div className="border-t border-white/5 bg-white/[0.01] p-4 space-y-3">
+                  <div className="border-t border-white/5 bg-white/[0.01] p-4 space-y-2">
                     <p className="text-xs text-slate-300 leading-relaxed line-clamp-6">{job.description}</p>
                     {job.scrapedFrom && (
                       <p className="text-xs text-slate-500">Scraped from: <a href={job.scrapedFrom} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">{job.scrapedFrom}</a></p>
