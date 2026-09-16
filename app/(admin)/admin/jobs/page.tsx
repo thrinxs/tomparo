@@ -70,6 +70,17 @@ export default function AdminJobsPage() {
   const [findingUrl, setFindingUrl] = useState(false);
   const [sources, setSources] = useState<any[]>([]);
 
+  // Batch URLs
+  const [batchUrls, setBatchUrls] = useState("");
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchResults, setBatchResults] = useState<any[]>([]);
+
+  // Paste extract
+  const [pasteText, setPasteText] = useState("");
+  const [pasteLoading, setPasteLoading] = useState(false);
+  const [pastedJobs, setPastedJobs] = useState<any[]>([]);
+  const [savingPasted, setSavingPasted] = useState(false);
+
   // Cleanup
   const [cleanupLoading, setCleanupLoading] = useState(false);
 
@@ -276,6 +287,84 @@ export default function AdminJobsPage() {
     setScrapeLoading(false);
   };
 
+  const handleBatchScrape = async () => {
+    const urls = batchUrls.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http"));
+    if (!urls.length) { toast.error("Enter at least one valid URL"); return; }
+    setBatchLoading(true);
+    setBatchResults([]);
+    toast.loading(`Scraping ${urls.length} URLs...`, { id: "batch" });
+    try {
+      const res = await fetch("/api/admin/jobs/scrape-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBatchResults(data.results);
+        toast.success(`Done! ${data.totalImported} jobs imported from ${data.totalUrls} URLs`, { id: "batch" });
+        fetchJobs();
+      } else {
+        toast.error(data.error || "Failed", { id: "batch" });
+      }
+    } catch {
+      toast.error("Network error", { id: "batch" });
+    }
+    setBatchLoading(false);
+  };
+
+  const handlePasteExtract = async () => {
+    if (!pasteText.trim()) { toast.error("Paste some job information first"); return; }
+    setPasteLoading(true);
+    setPastedJobs([]);
+    toast.loading("Extracting jobs from text...", { id: "paste" });
+    try {
+      const res = await fetch("/api/admin/jobs/paste-extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: pasteText }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPastedJobs(data.jobs);
+        if (data.jobs.length === 0) {
+          toast.error("No job listings found in the text", { id: "paste" });
+        } else {
+          toast.success(`Found ${data.jobs.length} job${data.jobs.length !== 1 ? "s" : ""}! Review and save below.`, { id: "paste" });
+        }
+      } else {
+        toast.error(data.error || "Failed", { id: "paste" });
+      }
+    } catch {
+      toast.error("Network error", { id: "paste" });
+    }
+    setPasteLoading(false);
+  };
+
+  const handleSavePasted = async () => {
+    if (!pastedJobs.length) return;
+    setSavingPasted(true);
+    try {
+      const res = await fetch("/api/admin/jobs/save-extracted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobs: pastedJobs }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`${data.saved} jobs saved to pending queue!`);
+        setPastedJobs([]);
+        setPasteText("");
+        fetchJobs();
+      } else {
+        toast.error(data.error || "Failed to save");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+    setSavingPasted(false);
+  };
+
   const handleCleanup = async () => {
     setCleanupLoading(true);
     const secret = prompt("Enter first 16 chars of NEXTAUTH_SECRET:");
@@ -447,6 +536,102 @@ export default function AdminJobsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Batch URL scraper */}
+      <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Globe className="h-4 w-4 text-cyan-400" />
+          <p className="text-sm font-semibold text-white">Batch Scrape — Multiple URLs</p>
+          <span className="text-xs text-slate-500">(up to 20 at once)</span>
+        </div>
+        <div className="space-y-2">
+          <textarea
+            value={batchUrls}
+            onChange={(e) => setBatchUrls(e.target.value)}
+            rows={5}
+            className={`${inputClass} resize-none font-mono text-xs`}
+            placeholder={"Paste one URL per line:\nhttps://flutterwave.com/ng/careers\nhttps://paystack.com/careers\nhttps://kuda.com/en-ng/careers\nhttps://andela.com/open-roles"}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-500">
+              {batchUrls.split("\n").filter((u) => u.trim().startsWith("http")).length} valid URLs detected
+            </span>
+            <button onClick={handleBatchScrape} disabled={batchLoading}
+              className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 transition disabled:opacity-50">
+              {batchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}
+              Scrape All
+            </button>
+          </div>
+          {batchResults.length > 0 && (
+            <div className="mt-2 space-y-1.5 border-t border-white/5 pt-3">
+              {batchResults.map((r, i) => (
+                <div key={i} className="flex items-center justify-between text-xs rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+                  <span className="text-slate-300 truncate">{r.company}</span>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    {r.error ? (
+                      <span className="text-red-400">{r.error}</span>
+                    ) : (
+                      <span className="text-emerald-400">+{r.imported} jobs</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Paste & Extract */}
+      <div className="rounded-2xl border border-pink-500/20 bg-pink-500/5 p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Briefcase className="h-4 w-4 text-pink-400" />
+          <p className="text-sm font-semibold text-white">Paste Job Data</p>
+          <span className="text-xs text-slate-500">(AI extracts + enriches from web)</span>
+        </div>
+        <div className="space-y-2">
+          <textarea
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            rows={5}
+            className={`${inputClass} resize-none text-xs`}
+            placeholder="Paste any job information here — copied from a website, WhatsApp, email, PDF, anywhere. AI will extract the job listings, clean them up, and search the web for more details."
+          />
+          <button onClick={handlePasteExtract} disabled={pasteLoading || !pasteText.trim()}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-2 text-sm font-medium text-white hover:bg-pink-500 transition disabled:opacity-50">
+            {pasteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            Extract & Enrich Jobs
+          </button>
+        </div>
+
+        {pastedJobs.length > 0 && (
+          <div className="mt-4 space-y-3 border-t border-white/5 pt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-white">{pastedJobs.length} job{pastedJobs.length !== 1 ? "s" : ""} extracted</p>
+              <button onClick={handleSavePasted} disabled={savingPasted}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 transition disabled:opacity-50">
+                {savingPasted ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Save All to Pending
+              </button>
+            </div>
+            {pastedJobs.map((job, i) => (
+              <div key={i} className="rounded-xl border border-white/5 bg-white/[0.02] p-3 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-white">{job.title}</p>
+                  <span className="text-xs text-slate-500 shrink-0">{job.type?.replace("_", " ")}</span>
+                </div>
+                {job.company && <p className="text-xs text-pink-400">{job.company}</p>}
+                {job.location && <p className="text-xs text-slate-500">{job.location}</p>}
+                <p className="text-xs text-slate-400 line-clamp-3">{job.description}</p>
+                {job._enriched && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-400">
+                    <Zap className="h-2.5 w-2.5" /> Web-enriched
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Tabs + Filter */}
