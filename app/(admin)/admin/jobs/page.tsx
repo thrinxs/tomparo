@@ -25,7 +25,7 @@ const APPROVAL_COLORS: Record<string, string> = {
 const TYPE_OPTIONS = ["FULL_TIME","PART_TIME","CONTRACT","REMOTE","HYBRID"];
 
 const COUNTRIES = [
-  ["gb","UK"],["us","USA"],["ca","Canada"],["au","Australia"],
+  ["gb","UK — All Jobs"],["us","USA — All Jobs"],["ca","Canada"],["au","Australia"],
   ["za","South Africa"],["de","Germany"],["fr","France"],
   ["in","India"],["br","Brazil"],["sg","Singapore"],
   ["nl","Netherlands"],["at","Austria"],["pl","Poland"],["nz","New Zealand"],
@@ -83,6 +83,7 @@ export default function AdminJobsPage() {
 
   // Cleanup
   const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [mainTab, setMainTab] = useState<"current"|"add">("current");
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -398,12 +399,25 @@ export default function AdminJobsPage() {
             className="inline-flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-400 hover:bg-amber-500/20 transition disabled:opacity-50">
             <Clock className="h-4 w-4" />Expire Deadlines
           </button>
-          <button onClick={() => setShowForm(!showForm)}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 transition">
-            <Plus className="h-4 w-4" />Post Job
-          </button>
         </div>
       </div>
+
+      {/* Main tab switcher */}
+      <div className="flex rounded-2xl border border-white/10 bg-white/[0.02] p-1 w-fit">
+        <button
+          onClick={() => setMainTab("current")}
+          className={`flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-medium transition ${mainTab === "current" ? "bg-white/10 text-white" : "text-slate-400 hover:text-white"}`}>
+          <Briefcase className="h-4 w-4" />Current Jobs
+        </button>
+        <button
+          onClick={() => setMainTab("add")}
+          className={`flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-medium transition ${mainTab === "add" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}>
+          <Plus className="h-4 w-4" />Add New Jobs
+        </button>
+      </div>
+
+      {/* ── ADD NEW JOBS TAB ── */}
+      {mainTab === "add" && (<>
 
       {/* Post Job Form */}
       {showForm && (
@@ -634,6 +648,11 @@ export default function AdminJobsPage() {
         )}
       </div>
 
+      </> /* end add tab */ )}
+
+      {/* ── CURRENT JOBS TAB ── */}
+      {mainTab === "current" && (<>
+
       {/* Tabs + Filter */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex rounded-xl border border-white/10 bg-white/[0.02] p-1">
@@ -813,6 +832,7 @@ export default function AdminJobsPage() {
           })}
         </div>
       )}
+      </> /* end current tab */ )}
     </div>
   );
 }

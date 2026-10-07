@@ -1,5 +1,8 @@
 "use client";
 
+// Note: metadata export must be in a server component
+// favicon is served automatically from app/favicon.ico
+
 import { useState } from "react";
 import AdminSidebar from "@/components/layout/AdminSidebar";
 import AdminDashboardToggle from "@/components/admin/AdminDashboardToggle";
