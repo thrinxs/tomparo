@@ -61,6 +61,8 @@ export default function AdminJobsPage() {
   const [adzunaKeyword, setAdzunaKeyword] = useState("software engineer");
   const [adzunaCountry, setAdzunaCountry] = useState("gb");
   const [adzunaPages, setAdzunaPages] = useState("2");
+  const [adzunaRemoteOnly, setAdzunaRemoteOnly] = useState(false);
+  const [adzunaAllCountries, setAdzunaAllCountries] = useState(false);
   const [adzunaLoading, setAdzunaLoading] = useState(false);
 
   // Scraper
@@ -227,19 +229,30 @@ export default function AdminJobsPage() {
 
   const handleAdzunaFetch = async () => {
     setAdzunaLoading(true);
-    toast.loading("Fetching from Adzuna...", { id: "adzuna" });
-    const res = await fetch("/api/admin/jobs/adzuna", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword: adzunaKeyword, country: adzunaCountry, pages: parseInt(adzunaPages) }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      toast.success(`Imported ${data.imported} jobs (${data.skipped} skipped)`, { id: "adzuna" });
-      fetchJobs();
-    } else {
-      toast.error(data.error || "Failed", { id: "adzuna" });
+    const keyword = adzunaRemoteOnly ? `${adzunaKeyword} remote`.trim() : adzunaKeyword;
+    const countries = adzunaAllCountries ? ["gb","us","ca","au","za","de","in","sg"] : [adzunaCountry];
+
+    let totalImported = 0;
+    let totalSkipped = 0;
+
+    for (const country of countries) {
+      toast.loading(`Fetching from Adzuna (${country.toUpperCase()})...`, { id: "adzuna" });
+      try {
+        const res = await fetch("/api/admin/jobs/adzuna", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keyword, country, pages: parseInt(adzunaPages) }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          totalImported += data.imported;
+          totalSkipped += data.skipped;
+        }
+      } catch { /* continue */ }
     }
+
+    toast.success(`Done! ${totalImported} imported, ${totalSkipped} skipped`, { id: "adzuna" });
+    fetchJobs();
     setAdzunaLoading(false);
   };
 
@@ -492,10 +505,41 @@ export default function AdminJobsPage() {
                 {["1","2","3","4","5"].map((p) => <option key={p} value={p}>{p} page{p !== "1" ? "s" : ""} ({parseInt(p) * 20} jobs)</option>)}
               </select>
             </div>
+            {/* Remote + All Countries toggles */}
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={adzunaRemoteOnly}
+                  onChange={(e) => setAdzunaRemoteOnly(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-xs text-slate-300">Remote jobs only</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={adzunaAllCountries}
+                  onChange={(e) => setAdzunaAllCountries(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-xs text-slate-300">All countries (slower)</span>
+              </label>
+            </div>
+            {adzunaRemoteOnly && (
+              <p className="text-[10px] text-purple-400">
+                Adds "remote" to your keyword and fetches remote-friendly roles
+              </p>
+            )}
+            {adzunaAllCountries && (
+              <p className="text-[10px] text-amber-400">
+                Searches 8 countries — takes longer but finds more jobs
+              </p>
+            )}
             <button onClick={handleAdzunaFetch} disabled={adzunaLoading}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500 transition disabled:opacity-50">
               {adzunaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-              Fetch Jobs
+              {adzunaAllCountries ? "Fetch from All Countries" : "Fetch Jobs"}
             </button>
           </div>
         </div>
