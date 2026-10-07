@@ -52,9 +52,21 @@ function timeAgo(date: string) {
 
 function formatSalary(min?: number | null, max?: number | null, currency?: string | null) {
   if (!min && !max) return null;
+
+  const SYMBOLS: Record<string, string> = {
+    NGN: "₦", USD: "$", GBP: "£", EUR: "€", CAD: "CA$",
+    AUD: "A$", NZD: "NZ$", ZAR: "R", INR: "₹", SGD: "S$",
+    BRL: "R$", PLN: "zł", RUB: "₽",
+  };
+
+  const symbol = SYMBOLS[currency || "USD"] || (currency ? currency + " " : "$");
+
   const fmt = (n: number) => n >= 1000000
-    ? `₦${(n / 1000000).toFixed(1)}M`
-    : `₦${(n / 1000).toFixed(0)}k`;
+    ? `${symbol}${(n / 1000000).toFixed(1)}M`
+    : n >= 1000
+    ? `${symbol}${(n / 1000).toFixed(0)}k`
+    : `${symbol}${n}`;
+
   if (min && max) return `${fmt(min)} – ${fmt(max)}`;
   if (min) return `From ${fmt(min)}`;
   if (max) return `Up to ${fmt(max)}`;
@@ -74,11 +86,11 @@ function JobCard({ job }: { job: any }) {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-bold text-white">
-            {job.recruiter.companyName[0]}
+            {(job.sourceCompanyName || job.recruiter.companyName)[0]}
           </div>
           <div>
-            <p className="text-xs text-slate-400">{job.recruiter.companyName}</p>
-            {job.recruiter.industry && (
+            <p className="text-xs text-slate-400">{job.sourceCompanyName || job.recruiter.companyName}</p>
+            {job.recruiter.industry && !job.sourceCompanyName && (
               <p className="text-[10px] text-slate-600">{job.recruiter.industry}</p>
             )}
           </div>

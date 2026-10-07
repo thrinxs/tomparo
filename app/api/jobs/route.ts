@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
               industry: true,
             },
           },
+          // sourceCompanyName is already a direct field on JobPosting
           _count: { select: { applications: true } },
         },
       }),
