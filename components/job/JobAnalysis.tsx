@@ -18,9 +18,16 @@ import {
   MessageSquare,
   Tag,
   TrendingUp,
+  Wand2,
+  FileText,
+  Download,
+  Loader2,
 } from "lucide-react";
+import { useState } from "react";
 
 interface JobAnalysisProps {
+  resumeText?: string;
+  jobDescription?: string;
   matchResult: {
     matchScore: number;
     matchLabel: string;
@@ -63,7 +70,7 @@ interface JobAnalysisProps {
   };
 }
 
-export default function JobAnalysis({ matchResult }: JobAnalysisProps) {
+export default function JobAnalysis({ matchResult, resumeText, jobDescription }: JobAnalysisProps) {
   const getScoreColor = (score: number) => {
     if (score >= 85) return "text-emerald-400";
     if (score >= 70) return "text-cyan-400";
@@ -89,6 +96,34 @@ export default function JobAnalysis({ matchResult }: JobAnalysisProps) {
   const circumference = 2 * Math.PI * 70;
   const strokeDashoffset =
     circumference - (matchResult.matchScore / 100) * circumference;
+
+  const [cvLoading, setCvLoading] = useState(false);
+  const [generatedCv, setGeneratedCv] = useState<{ id: string; title: string } | null>(null);
+  const [cvError, setCvError] = useState("");
+
+  const handleTailorCv = async () => {
+    setCvLoading(true);
+    setCvError("");
+    try {
+      const res = await fetch("/api/cv-builder/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resumeText: resumeText || "",
+          jobDescription: jobDescription || "",
+          jobTitle: matchResult.jobDetails.title,
+          company: matchResult.jobDetails.company,
+        }),
+      });
+      if (!res.ok) throw new Error("Generation failed");
+      const data = await res.json();
+      setGeneratedCv(data);
+    } catch {
+      setCvError("Could not generate CV. Please try again.");
+    } finally {
+      setCvLoading(false);
+    }
+  };
 
   return (
     <div className="mt-8 space-y-6">
@@ -486,6 +521,75 @@ export default function JobAnalysis({ matchResult }: JobAnalysisProps) {
           Including these keywords will help your CV pass ATS filters for this
           specific role.
         </p>
+      </div>
+
+      {/* Tailor My CV Action */}
+      <div className="rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-500/10 to-blue-500/5 p-6 backdrop-blur-xl">
+        <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-purple-400">
+          <Wand2 className="h-4 w-4" />
+          Tailor My CV for This Job
+        </h3>
+        <p className="mb-4 text-sm text-slate-400">
+          Automatically apply the recommended tweaks, add missing keywords, and generate a job-specific CV in one click.
+        </p>
+
+        {!generatedCv ? (
+          <button
+            onClick={handleTailorCv}
+            disabled={cvLoading}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-purple-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-purple-700 disabled:opacity-60"
+          >
+            {cvLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating tailored CV...
+              </>
+            ) : (
+              <>
+                <Wand2 className="h-4 w-4" />
+                Generate Tailored CV
+              </>
+            )}
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 rounded-2xl border border-purple-500/20 bg-purple-500/10 px-4 py-3">
+              <FileText className="h-5 w-5 text-purple-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{generatedCv.title}</p>
+                <p className="text-xs text-slate-400">Generated on TomParo · Ready to download</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href={`/api/cv-builder/${generatedCv.id}/download?format=docx`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-sm font-medium text-purple-300 transition hover:bg-purple-500/20"
+              >
+                <Download className="h-4 w-4" /> .DOCX
+              </a>
+              <a
+                href={`/api/cv-builder/${generatedCv.id}/download?format=pdf`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-sm font-medium text-purple-300 transition hover:bg-purple-500/20"
+              >
+                <Download className="h-4 w-4" /> .PDF
+              </a>
+            </div>
+            <button
+              onClick={() => window.location.href = `/dashboard/cv-builder?edit=${generatedCv.id}`}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-purple-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-purple-700"
+            >
+              <Wand2 className="h-4 w-4" /> View & Edit in CV Builder
+            </button>
+          </div>
+        )}
+
+        {cvError && (
+          <p className="mt-3 text-xs text-red-400">{cvError}</p>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { Target, Sparkles, AlertCircle, Brain, Search, TrendingUp, Zap } from "l
 
 export default function JobMatchPage() {
   const [resumeText, setResumeText] = useState("");
+  const [storedJobDescription, setStoredJobDescription] = useState("");
   const [isMatching, setIsMatching] = useState(false);
   const [matchResult, setMatchResult] = useState<any>(null);
   const [error, setError] = useState("");
@@ -57,6 +58,7 @@ export default function JobMatchPage() {
   };
 
   const handleMatch = async (jobDescription: string) => {
+    setStoredJobDescription(jobDescription);
     if (!resumeText) {
       setError("Please provide your CV first");
       return;
@@ -333,7 +335,7 @@ export default function JobMatchPage() {
       )}
 
       {/* Results */}
-      {matchResult && !isMatching && <JobAnalysis matchResult={matchResult} />}
+      {matchResult && !isMatching && <JobAnalysis matchResult={matchResult} resumeText={resumeText} jobDescription={storedJobDescription} />}
     </div>
   );
 }
