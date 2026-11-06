@@ -12,15 +12,15 @@ export async function POST(req: Request) {
     const { message, conversationId, cvContext } = await req.json();
 
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: (session.user as any).id },
       include: {
-        profile: true,
         resumes: { orderBy: { createdAt: "desc" }, take: 1 },
+        recruiterProfile: true,
       },
     });
 
     const resumeText = user?.resumes[0]?.rawText || "";
-    const profileBio = user?.profile?.bio || "";
+    const profileBio = user?.recruiterProfile?.description || "";
 
     const systemPrompt = `You are TomParo AI Career Assistant — professional, warm, and helpful.
 User Name: ${session.user.name || "User"}
