@@ -16,9 +16,7 @@ export async function POST(req: NextRequest) {
 
     const { resumeText, jobDescription, jobTitle, company } = await req.json();
 
-    if (!jobDescription) {
-      return NextResponse.json({ error: "Job description is required" }, { status: 400 });
-    }
+// jobDescription is optional — used for tailoring if provided
 
     // Pull user profile
     const user = await prisma.user.findUnique({
@@ -37,12 +35,7 @@ export async function POST(req: NextRequest) {
       if (latestResume?.rawText) baseResumeText = latestResume.rawText;
     }
 
-    if (!baseResumeText) {
-      return NextResponse.json(
-        { error: "No CV content found. Please upload your CV on the Job Match page first." },
-        { status: 400 }
-      );
-    }
+    // baseResumeText may be empty — AI will use profile data only
 
     const prompt = `
 You are an expert CV writer. Create a tailored, professional CV for this job application.
@@ -161,7 +154,7 @@ ${jobDescription}
       },
     });
 
-    return NextResponse.json({ success: true, cvId: cv.id, title: cv.title });
+    return NextResponse.json({ id: cv.id, title: cv.title });
   } catch (err) {
     console.error("CV generate error:", err);
     return NextResponse.json(
