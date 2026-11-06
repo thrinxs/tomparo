@@ -13,8 +13,8 @@ export default function AdminViewingBanner({ dashboardType }: Props) {
   if (dismissed) return null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 w-full max-w-2xl px-4">
-      <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-950/90 px-5 py-3 shadow-2xl backdrop-blur-xl">
+    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 w-full max-w-lg px-4">
+      <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-500/20 bg-red-950/50 px-4 py-2 shadow-lg backdrop-blur-xl">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/20">
             <Shield className="h-4 w-4 text-red-400" />

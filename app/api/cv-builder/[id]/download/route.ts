@@ -302,8 +302,14 @@ export async function GET(
     const { id } = await params;
     const format = req.nextUrl.searchParams.get("format") || "docx";
 
-    const cv = await prisma.builtCV.findFirst({ where: { id, userId } });
+    const userRole = (session.user as any).role;
+    const isAdmin = userRole === "ADMIN" || userRole === "STAFF";
+
+    const cv = await prisma.builtCV.findFirst({ where: { id } });
     if (!cv) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!isAdmin && cv.userId !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const safeName = (cv.fullName || "cv")
       .toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").slice(0, 40);
