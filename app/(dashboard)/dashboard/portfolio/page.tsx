@@ -1,479 +1,284 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import {
-  User, MapPin, Mail, Phone, Globe, Twitter, Linkedin, Github,
-  Plus, Trash2, Save, Eye, EyeOff, ExternalLink, Loader2,
-  CheckCircle, AlertTriangle, Link2, Download, Briefcase,
-  GraduationCap, Award, Code, ChevronDown, ChevronUp, Copy,
+  Plus, Folder, Eye, EyeOff, Globe, Lock, Link2,
+  Trash2, Pencil, Star, StarOff, Loader2, ExternalLink,
+  LayoutGrid, Bell,
 } from "lucide-react";
+import Link from "next/link";
 import toast from "react-hot-toast";
 
-interface Experience { id: string; title: string; company: string; from: string; to: string; current: boolean; description: string; }
-interface Project { id: string; title: string; description: string; url: string; image: string; }
-interface Education { id: string; school: string; degree: string; field: string; from: string; to: string; }
-interface Certification { id: string; name: string; issuer: string; year: string; url: string; }
+const CATEGORIES = [
+  "Web Development","Mobile Development","UI/UX Design","Graphic Design",
+  "Motion & Video","Photography","Writing & Copywriting","Marketing & Growth",
+  "Teaching & Education","Engineering","Finance & Accounting","Data & Analytics",
+  "Product Management","Music & Audio","Fashion & Styling","Architecture","Other",
+];
 
-function uid() { return Math.random().toString(36).slice(2); }
+interface Portfolio {
+  id: string;
+  title: string;
+  slug: string;
+  category: string;
+  tagline: string;
+  coverImage: string;
+  template: string;
+  visibility: string;
+  isDefault: boolean;
+  onDiscovery: boolean;
+  likesCount: number;
+  projects: any[];
+  createdAt: string;
+}
 
-export default function PortfolioPage() {
+export default function PortfolioListPage() {
   const { data: session } = useSession();
   const user = session?.user as any;
   const isPremium = user?.isPremium || user?.role === "PREMIUM" || user?.role === "ADMIN";
 
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [slug, setSlug] = useState("");
-  const [slugStatus, setSlugStatus] = useState<"idle" | "checking" | "available" | "taken" | "invalid">("idle");
-  const [isPublic, setIsPublic] = useState(false);
-  const [headline, setHeadline] = useState("");
-  const [bio, setBio] = useState("");
-  const [location, setLocation] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [website, setWebsite] = useState("");
-  const [twitter, setTwitter] = useState("");
-  const [linkedin, setLinkedin] = useState("");
-  const [github, setGithub] = useState("");
-  const [skills, setSkills] = useState<string[]>([]);
-  const [skillInput, setSkillInput] = useState("");
-  const [experience, setExperience] = useState<Experience[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [education, setEducation] = useState<Education[]>([]);
-  const [certifications, setCertifications] = useState<Certification[]>([]);
-  const [openSection, setOpenSection] = useState<string | null>("basics");
-  const [viewCount, setViewCount] = useState(0);
-  const slugCheckRef = useRef<NodeJS.Timeout | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState({ title: "", slug: "", category: "", tagline: "" });
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch("/api/portfolio");
-        const data = await res.json();
-        if (data.portfolio) {
-          const p = data.portfolio;
-          setSlug(p.slug || "");
-          setIsPublic(p.isPublic || false);
-          setHeadline(p.headline || "");
-          setBio(p.bio || "");
-          setLocation(p.location || "");
-          setEmail(p.email || "");
-          setPhone(p.phone || "");
-          setWebsite(p.website || "");
-          setTwitter(p.twitter || "");
-          setLinkedin(p.linkedin || "");
-          setGithub(p.github || "");
-          setSkills(p.skills ? JSON.parse(p.skills) : []);
-          setExperience(p.experience ? JSON.parse(p.experience) : []);
-          setProjects(p.projects ? JSON.parse(p.projects) : []);
-          setEducation(p.education ? JSON.parse(p.education) : []);
-          setCertifications(p.certifications ? JSON.parse(p.certifications) : []);
-          setViewCount(p.viewCount || 0);
-        } else {
-          const name = user?.name || "";
-          const autoSlug = name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
-          setSlug(autoSlug || "my-portfolio");
-          setEmail(user?.email || "");
-        }
-      } catch {}
-      finally { setLoading(false); }
-    };
-    load();
-  }, []);
+  useEffect(() => { fetchPortfolios(); }, []);
 
-  const checkSlug = useCallback((value: string) => {
-    if (!value) { setSlugStatus("idle"); return; }
-    if (!/^[a-z0-9-]+$/.test(value)) { setSlugStatus("invalid"); return; }
-    setSlugStatus("checking");
-    if (slugCheckRef.current) clearTimeout(slugCheckRef.current);
-    slugCheckRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/portfolio/slug/check?slug=${value}`);
-        const data = await res.json();
-        setSlugStatus(data.available ? "available" : "taken");
-      } catch { setSlugStatus("idle"); }
-    }, 500);
-  }, []);
-
-  const handleSlugChange = (value: string) => {
-    const clean = value.toLowerCase().replace(/[^a-z0-9-]/g, "");
-    setSlug(clean);
-    checkSlug(clean);
+  const fetchPortfolios = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/portfolio");
+      const data = await res.json();
+      setPortfolios(Array.isArray(data) ? data : []);
+    } catch { toast.error("Failed to load portfolios"); }
+    finally { setLoading(false); }
   };
 
-  const handleSave = async () => {
-    if (!slug) { toast.error("Please set a portfolio URL"); return; }
-    if (slugStatus === "taken") { toast.error("That URL is already taken"); return; }
-    if (slugStatus === "invalid") { toast.error("Invalid URL format"); return; }
-    setSaving(true);
+  const autoSlug = (title: string) =>
+    title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  const handleCreate = async () => {
+    if (!form.title || !form.category) return toast.error("Title and category are required");
+    setCreating(true);
     try {
       const res = await fetch("/api/portfolio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slug, isPublic, headline, bio, location, email, phone,
-          website, twitter, linkedin, github, skills, experience,
-          projects, education, certifications,
-        }),
+        body: JSON.stringify({ ...form, slug: form.slug || autoSlug(form.title) }),
       });
-      if (!res.ok) throw new Error("Failed to save");
-      setSaved(true);
-      toast.success("Portfolio saved!");
-      setTimeout(() => setSaved(false), 3000);
-    } catch { toast.error("Failed to save portfolio"); }
-    finally { setSaving(false); }
+      const data = await res.json();
+      if (!res.ok) return toast.error(data.error || "Failed to create");
+      toast.success("Portfolio created!");
+      setShowCreate(false);
+      setForm({ title: "", slug: "", category: "", tagline: "" });
+      window.location.href = `/dashboard/portfolio/${data.id}`;
+    } catch { toast.error("Something went wrong"); }
+    finally { setCreating(false); }
   };
 
-  const handleDownloadPDF = async () => {
-    const html2pdf = (await import("html2pdf.js")).default;
-    const element = document.getElementById("portfolio-preview");
-    if (!element) { toast.error("Nothing to download yet"); return; }
-    const opt = {
-      margin: 0,
-      filename: `${slug || "portfolio"}.pdf`,
-      image: { type: "jpeg" as const, quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: "in" as const, format: "a4", orientation: "portrait" as const },
-    };
-    toast.loading("Generating PDF...", { id: "pdf" });
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
     try {
-      await html2pdf().set(opt).from(element).save();
-      toast.success("PDF downloaded!", { id: "pdf" });
-    } catch { toast.error("PDF generation failed", { id: "pdf" }); }
+      const res = await fetch(`/api/portfolio/${id}`, { method: "DELETE" });
+      if (!res.ok) return toast.error("Failed to delete");
+      toast.success("Deleted");
+      setPortfolios(prev => prev.filter(p => p.id !== id));
+    } catch { toast.error("Something went wrong"); }
   };
 
-  const addSkill = () => {
-    const s = skillInput.trim();
-    if (!s || skills.includes(s)) return;
-    setSkills([...skills, s]);
-    setSkillInput("");
+  const handleSetDefault = async (id: string) => {
+    try {
+      await fetch(`/api/portfolio/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isDefault: true }),
+      });
+      setPortfolios(prev => prev.map(p => ({ ...p, isDefault: p.id === id })));
+      toast.success("Default portfolio updated");
+    } catch { toast.error("Failed"); }
   };
 
-  const toggle = (section: string) => setOpenSection(openSection === section ? null : section);
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-96">
-      <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
-    </div>
-  );
-
-  const portfolioUrl = `${typeof window !== "undefined" ? window.location.origin : "https://tomparo.com"}/portfolio/${slug}`;
+  const visibilityIcon = (v: string) =>
+    v === "PUBLIC" ? <Globe size={14} className="text-green-400" /> :
+    v === "LINK_ONLY" ? <Link2 size={14} className="text-amber-400" /> :
+    <Lock size={14} className="text-slate-400" />;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">My Portfolio</h1>
-          <p className="text-slate-400 text-sm mt-1">Build your public portfolio page and share it with employers.</p>
+          <h1 className="text-2xl font-bold text-slate-900">My Portfolios</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            {isPremium ? "Unlimited portfolios" : `${portfolios.length} / 1 portfolio (Free plan)`}
+          </p>
         </div>
         <div className="flex items-center gap-3">
-          {isPremium && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-xs font-medium">
-              <Eye className="w-3.5 h-3.5" />{viewCount} view{viewCount !== 1 ? "s" : ""}
-            </div>
-          )}
-          <button onClick={handleDownloadPDF}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-slate-400 text-sm font-medium hover:text-white transition">
-            <Download className="w-4 h-4" />Download PDF
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold transition disabled:opacity-50">
-            {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : saved ? <><CheckCircle className="w-4 h-4" />Saved!</> : <><Save className="w-4 h-4" />Save Portfolio</>}
+          <Link href="/dashboard/portfolio/requests"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium transition">
+            <Bell size={16} /> CV Requests
+          </Link>
+          <button
+            onClick={() => {
+              if (!isPremium && portfolios.length >= 1) {
+                toast.error("Free plan allows 1 portfolio. Upgrade to Premium for unlimited.");
+                return;
+              }
+              setShowCreate(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition"
+          >
+            <Plus size={16} /> New Portfolio
           </button>
         </div>
       </div>
 
-      {/* Portfolio URL + Visibility */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-4">
-        <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Link2 className="w-4 h-4 text-slate-400" />Portfolio URL</h3>
-        <div className="flex items-center gap-2">
-          <span className="text-slate-500 text-sm shrink-0">tomparo.com/portfolio/</span>
-          <div className="flex-1 relative">
-            <input value={slug} onChange={(e) => handleSlugChange(e.target.value)} placeholder="your-name"
-              className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-2.5 text-sm text-white outline-none focus:border-purple-500/50 transition" />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-              {slugStatus === "checking" && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
-              {slugStatus === "available" && <CheckCircle className="w-4 h-4 text-emerald-400" />}
-              {slugStatus === "taken" && <AlertTriangle className="w-4 h-4 text-red-400" />}
-              {slugStatus === "invalid" && <AlertTriangle className="w-4 h-4 text-amber-400" />}
-            </div>
-          </div>
-          <button onClick={() => { navigator.clipboard.writeText(portfolioUrl); toast.success("Link copied!"); }}
-            className="p-2.5 rounded-xl border border-white/10 bg-white/5 text-slate-400 hover:text-white transition">
-            <Copy className="w-4 h-4" />
-          </button>
-          {isPublic && slug && (
-            <a href={portfolioUrl} target="_blank" rel="noopener noreferrer"
-              className="p-2.5 rounded-xl border border-white/10 bg-white/5 text-slate-400 hover:text-white transition">
-              <ExternalLink className="w-4 h-4" />
-            </a>
-          )}
-        </div>
-        {slugStatus === "taken" && <p className="text-xs text-red-400">That URL is already taken. Try another.</p>}
-        {slugStatus === "invalid" && <p className="text-xs text-amber-400">Only lowercase letters, numbers, and hyphens.</p>}
-        {slugStatus === "available" && <p className="text-xs text-emerald-400">✓ Available!</p>}
-
-        <div className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-          <div>
-            <p className="text-sm font-medium text-white">Visibility</p>
-            <p className="text-xs text-slate-500 mt-0.5">{isPublic ? "Anyone with the link can view your portfolio" : "Only you can see your portfolio"}</p>
-          </div>
-          <button onClick={() => setIsPublic(!isPublic)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isPublic ? "bg-purple-600" : "bg-slate-700"}`}>
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isPublic ? "translate-x-6" : "translate-x-1"}`} />
-          </button>
-        </div>
-
-        {!isPremium && (
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-400">Free plan PDFs include a TomParo watermark. <span className="text-white font-medium">Upgrade to Premium</span> to remove it and unlock view analytics.</p>
-          </div>
-        )}
-      </div>
-
-      {/* Basics */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-        <button onClick={() => toggle("basics")} className="w-full flex items-center justify-between px-6 py-4 hover:bg-white/[0.02] transition">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><User className="w-4 h-4 text-slate-400" />Basic Information</h3>
-          {openSection === "basics" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-        </button>
-        {openSection === "basics" && (
-          <div className="px-6 pb-6 space-y-4 border-t border-white/5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              {[
-                { label: "Professional Headline", value: headline, set: setHeadline, placeholder: "e.g. Senior Product Designer" },
-                { label: "Location", value: location, set: setLocation, placeholder: "e.g. Lagos, Nigeria", icon: MapPin },
-                { label: "Email", value: email, set: setEmail, placeholder: "your@email.com", icon: Mail },
-                { label: "Phone", value: phone, set: setPhone, placeholder: "+234 800 000 0000", icon: Phone },
-                { label: "Website", value: website, set: setWebsite, placeholder: "https://yoursite.com", icon: Globe },
-                { label: "Twitter / X", value: twitter, set: setTwitter, placeholder: "@username", icon: Twitter },
-                { label: "LinkedIn", value: linkedin, set: setLinkedin, placeholder: "linkedin.com/in/...", icon: Linkedin },
-                { label: "GitHub", value: github, set: setGithub, placeholder: "github.com/...", icon: Github },
-              ].map((field) => (
-                <div key={field.label} className={field.label === "Professional Headline" ? "sm:col-span-2" : ""}>
-                  <label className="text-xs text-slate-500 mb-1.5 block">{field.label}</label>
-                  <input value={field.value} onChange={(e) => field.set(e.target.value)} placeholder={field.placeholder}
-                    className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 transition" />
+      {/* Create Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Create New Portfolio</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Portfolio Title *</label>
+                <input
+                  value={form.title}
+                  onChange={e => {
+                    const t = e.target.value;
+                    setForm(f => ({ ...f, title: t, slug: autoSlug(t) }));
+                  }}
+                  placeholder="e.g. My UX Design Work"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Category *</label>
+                <select
+                  value={form.category}
+                  onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a category</option>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">Tagline</label>
+                <input
+                  value={form.tagline}
+                  onChange={e => setForm(f => ({ ...f, tagline: e.target.value }))}
+                  placeholder="e.g. Designing experiences that convert"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 mb-1 block">URL Slug</label>
+                <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden">
+                  <span className="px-3 py-2.5 bg-slate-50 text-slate-400 text-xs border-r border-slate-200">tomparo.com/portfolio/</span>
+                  <input
+                    value={form.slug}
+                    onChange={e => setForm(f => ({ ...f, slug: e.target.value }))}
+                    className="flex-1 px-3 py-2.5 text-sm focus:outline-none"
+                  />
                 </div>
-              ))}
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-slate-500 mb-1.5 block">Bio</label>
-              <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Write a short bio about yourself..." rows={4}
-                className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 resize-none transition" />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Skills */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-        <button onClick={() => toggle("skills")} className="w-full flex items-center justify-between px-6 py-4 hover:bg-white/[0.02] transition">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Code className="w-4 h-4 text-slate-400" />Skills <span className="text-slate-500 font-normal">({skills.length})</span></h3>
-          {openSection === "skills" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-        </button>
-        {openSection === "skills" && (
-          <div className="px-6 pb-6 space-y-4 border-t border-white/5 mt-0 pt-4">
-            <div className="flex gap-2">
-              <input value={skillInput} onChange={(e) => setSkillInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addSkill()}
-                placeholder="Add a skill (press Enter)" className="flex-1 rounded-xl border border-white/10 bg-slate-900/50 px-4 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 transition" />
-              <button onClick={addSkill} className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold transition">
-                <Plus className="w-4 h-4" />
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setShowCreate(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition">
+                Cancel
+              </button>
+              <button onClick={handleCreate} disabled={creating}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition flex items-center justify-center gap-2">
+                {creating ? <><Loader2 size={14} className="animate-spin" /> Creating...</> : "Create Portfolio"}
               </button>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {skills.map((s) => (
-                <span key={s} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-medium">
-                  {s}
-                  <button onClick={() => setSkills(skills.filter((x) => x !== s))} className="hover:text-red-400 transition"><Trash2 className="w-3 h-3" /></button>
-                </span>
-              ))}
-              {skills.length === 0 && <p className="text-xs text-slate-600">No skills added yet.</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Portfolio Grid */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={32} className="animate-spin text-blue-600" />
+        </div>
+      ) : portfolios.length === 0 ? (
+        <div className="text-center py-20 border-2 border-dashed border-slate-200 rounded-3xl">
+          <LayoutGrid size={40} className="text-slate-300 mx-auto mb-3" />
+          <h3 className="text-slate-700 font-semibold text-lg mb-1">No portfolios yet</h3>
+          <p className="text-slate-400 text-sm mb-4">Create your first portfolio to showcase your work</p>
+          <button onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition">
+            <Plus size={16} /> Create Portfolio
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {portfolios.map(p => (
+            <div key={p.id} className="bg-white border border-slate-200 rounded-3xl overflow-hidden hover:shadow-md transition group">
+              {/* Cover */}
+              <div className="h-36 bg-gradient-to-br from-blue-500 to-purple-600 relative">
+                {p.coverImage && (
+                  <img src={p.coverImage} alt={p.title} className="w-full h-full object-cover" />
+                )}
+                <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                  <span className="bg-black/40 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-full font-medium">
+                    {p.category}
+                  </span>
+                  {p.isDefault && (
+                    <span className="bg-amber-500/90 text-white text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
+                      <Star size={10} /> Default
+                    </span>
+                  )}
+                </div>
+                <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                  <span className="bg-black/40 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                    {visibilityIcon(p.visibility)}
+                    {p.visibility === "PUBLIC" ? "Public" : p.visibility === "LINK_ONLY" ? "Link only" : "Private"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-4">
+                <h3 className="font-bold text-slate-800 text-base mb-0.5">{p.title}</h3>
+                {p.tagline && <p className="text-slate-500 text-xs mb-2 line-clamp-1">{p.tagline}</p>}
+                <div className="flex items-center gap-3 text-xs text-slate-400 mb-4">
+                  <span>{p.projects?.length || 0} projects</span>
+                  <span>·</span>
+                  <span>❤️ {p.likesCount} likes</span>
+                  {p.onDiscovery && <><span>·</span><span className="text-purple-500">On Discovery</span></>}
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  <Link href={`/dashboard/portfolio/${p.id}`}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition">
+                    <Pencil size={12} /> Edit
+                  </Link>
+                  <a href={`/portfolio/${p.slug}`} target="_blank" rel="noreferrer"
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-medium transition">
+                    <ExternalLink size={12} /> View
+                  </a>
+                  {!p.isDefault && (
+                    <button onClick={() => handleSetDefault(p.id)}
+                      className="flex items-center justify-center px-3 py-2 border border-amber-200 hover:bg-amber-50 text-amber-600 rounded-xl text-xs font-medium transition"
+                      title="Set as default">
+                      <Star size={12} />
+                    </button>
+                  )}
+                  <button onClick={() => handleDelete(p.id, p.title)}
+                    className="flex items-center justify-center px-3 py-2 border border-red-200 hover:bg-red-50 text-red-500 rounded-xl text-xs font-medium transition">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Experience */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-        <button onClick={() => toggle("experience")} className="w-full flex items-center justify-between px-6 py-4 hover:bg-white/[0.02] transition">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Briefcase className="w-4 h-4 text-slate-400" />Work Experience <span className="text-slate-500 font-normal">({experience.length})</span></h3>
-          {openSection === "experience" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-        </button>
-        {openSection === "experience" && (
-          <div className="px-6 pb-6 space-y-4 border-t border-white/5 pt-4">
-            {experience.map((exp, i) => (
-              <div key={exp.id} className="rounded-xl border border-white/5 bg-white/[0.02] p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Experience {i + 1}</p>
-                  <button onClick={() => setExperience(experience.filter((e) => e.id !== exp.id))} className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    { label: "Job Title", key: "title" as const, placeholder: "e.g. Product Designer" },
-                    { label: "Company", key: "company" as const, placeholder: "e.g. TomParo" },
-                    { label: "From", key: "from" as const, placeholder: "Jan 2022", type: "month" },
-                    { label: "To", key: "to" as const, placeholder: "Dec 2023", type: "month" },
-                  ].map((field) => (
-                    <div key={field.key}>
-                      <label className="text-[10px] text-slate-500 mb-1 block">{field.label}</label>
-                      <input type={field.type || "text"} value={(exp as any)[field.key]}
-                        onChange={(e) => setExperience(experience.map((x) => x.id === exp.id ? { ...x, [field.key]: e.target.value } : x))}
-                        placeholder={field.placeholder}
-                        className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 transition" />
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 mb-1 block">Description</label>
-                  <textarea value={exp.description} onChange={(e) => setExperience(experience.map((x) => x.id === exp.id ? { ...x, description: e.target.value } : x))}
-                    placeholder="What did you do in this role?" rows={3}
-                    className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 resize-none transition" />
-                </div>
-              </div>
-            ))}
-            <button onClick={() => setExperience([...experience, { id: uid(), title: "", company: "", from: "", to: "", current: false, description: "" }])}
-              className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/10 text-slate-500 text-sm hover:text-white hover:border-white/20 transition">
-              <Plus className="w-4 h-4" />Add Experience
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Projects */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-        <button onClick={() => toggle("projects")} className="w-full flex items-center justify-between px-6 py-4 hover:bg-white/[0.02] transition">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Code className="w-4 h-4 text-slate-400" />Projects <span className="text-slate-500 font-normal">({projects.length})</span></h3>
-          {openSection === "projects" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-        </button>
-        {openSection === "projects" && (
-          <div className="px-6 pb-6 space-y-4 border-t border-white/5 pt-4">
-            {projects.map((proj, i) => (
-              <div key={proj.id} className="rounded-xl border border-white/5 bg-white/[0.02] p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Project {i + 1}</p>
-                  <button onClick={() => setProjects(projects.filter((p) => p.id !== proj.id))} className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>
-                </div>
-                {[
-                  { label: "Project Title", key: "title" as const, placeholder: "e.g. TomParo" },
-                  { label: "Project URL", key: "url" as const, placeholder: "https://..." },
-                ].map((field) => (
-                  <div key={field.key}>
-                    <label className="text-[10px] text-slate-500 mb-1 block">{field.label}</label>
-                    <input value={(proj as any)[field.key]}
-                      onChange={(e) => setProjects(projects.map((x) => x.id === proj.id ? { ...x, [field.key]: e.target.value } : x))}
-                      placeholder={field.placeholder}
-                      className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 transition" />
-                  </div>
-                ))}
-                <div>
-                  <label className="text-[10px] text-slate-500 mb-1 block">Description</label>
-                  <textarea value={proj.description} onChange={(e) => setProjects(projects.map((x) => x.id === proj.id ? { ...x, description: e.target.value } : x))}
-                    placeholder="Describe this project..." rows={3}
-                    className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 resize-none transition" />
-                </div>
-              </div>
-            ))}
-            <button onClick={() => setProjects([...projects, { id: uid(), title: "", description: "", url: "", image: "" }])}
-              className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/10 text-slate-500 text-sm hover:text-white hover:border-white/20 transition">
-              <Plus className="w-4 h-4" />Add Project
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Education */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-        <button onClick={() => toggle("education")} className="w-full flex items-center justify-between px-6 py-4 hover:bg-white/[0.02] transition">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><GraduationCap className="w-4 h-4 text-slate-400" />Education <span className="text-slate-500 font-normal">({education.length})</span></h3>
-          {openSection === "education" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-        </button>
-        {openSection === "education" && (
-          <div className="px-6 pb-6 space-y-4 border-t border-white/5 pt-4">
-            {education.map((edu, i) => (
-              <div key={edu.id} className="rounded-xl border border-white/5 bg-white/[0.02] p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Education {i + 1}</p>
-                  <button onClick={() => setEducation(education.filter((e) => e.id !== edu.id))} className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    { label: "School", key: "school" as const, placeholder: "University of Lagos" },
-                    { label: "Degree", key: "degree" as const, placeholder: "B.Sc." },
-                    { label: "Field of Study", key: "field" as const, placeholder: "Computer Science" },
-                    { label: "From", key: "from" as const, placeholder: "2018", type: "number" },
-                    { label: "To", key: "to" as const, placeholder: "2022", type: "number" },
-                  ].map((field) => (
-                    <div key={field.key} className={field.key === "school" ? "sm:col-span-2" : ""}>
-                      <label className="text-[10px] text-slate-500 mb-1 block">{field.label}</label>
-                      <input type={field.type || "text"} value={(edu as any)[field.key]}
-                        onChange={(e) => setEducation(education.map((x) => x.id === edu.id ? { ...x, [field.key]: e.target.value } : x))}
-                        placeholder={field.placeholder}
-                        className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 transition" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            <button onClick={() => setEducation([...education, { id: uid(), school: "", degree: "", field: "", from: "", to: "" }])}
-              className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/10 text-slate-500 text-sm hover:text-white hover:border-white/20 transition">
-              <Plus className="w-4 h-4" />Add Education
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Certifications */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-        <button onClick={() => toggle("certifications")} className="w-full flex items-center justify-between px-6 py-4 hover:bg-white/[0.02] transition">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Award className="w-4 h-4 text-slate-400" />Certifications <span className="text-slate-500 font-normal">({certifications.length})</span></h3>
-          {openSection === "certifications" ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-        </button>
-        {openSection === "certifications" && (
-          <div className="px-6 pb-6 space-y-4 border-t border-white/5 pt-4">
-            {certifications.map((cert, i) => (
-              <div key={cert.id} className="rounded-xl border border-white/5 bg-white/[0.02] p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Certification {i + 1}</p>
-                  <button onClick={() => setCertifications(certifications.filter((c) => c.id !== cert.id))} className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    { label: "Certificate Name", key: "name" as const, placeholder: "AWS Solutions Architect" },
-                    { label: "Issuer", key: "issuer" as const, placeholder: "Amazon Web Services" },
-                    { label: "Year", key: "year" as const, placeholder: "2023" },
-                    { label: "Certificate URL", key: "url" as const, placeholder: "https://..." },
-                  ].map((field) => (
-                    <div key={field.key} className={field.key === "name" ? "sm:col-span-2" : ""}>
-                      <label className="text-[10px] text-slate-500 mb-1 block">{field.label}</label>
-                      <input value={(cert as any)[field.key]}
-                        onChange={(e) => setCertifications(certifications.map((x) => x.id === cert.id ? { ...x, [field.key]: e.target.value } : x))}
-                        placeholder={field.placeholder}
-                        className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500/50 transition" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            <button onClick={() => setCertifications([...certifications, { id: uid(), name: "", issuer: "", year: "", url: "" }])}
-              className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/10 text-slate-500 text-sm hover:text-white hover:border-white/20 transition">
-              <Plus className="w-4 h-4" />Add Certification
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="flex justify-end">
-        <button onClick={handleSave} disabled={saving}
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold transition disabled:opacity-50">
-          {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : saved ? <><CheckCircle className="w-4 h-4" />Saved!</> : <><Save className="w-4 h-4" />Save Portfolio</>}
-        </button>
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
